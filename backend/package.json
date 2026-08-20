@@ -1,0 +1,29 @@
+{
+  "name": "poker-ai-backend",
+  "version": "1.0.0",
+  "description": "Backend for PokerAI Multiplayer Game",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.9.1",
+    "@prisma/client": "^7.9.1",
+    "cors": "^2.8.6",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "helmet": "^8.3.0",
+    "pg": "^8.23.0",
+    "redis": "^6.2.1",
+    "socket.io": "^4.8.3"
+  },
+  "devDependencies": {
+    "@prisma/client": "^7.9.1",
+    "cors": "^2.8.6",
+    "helmet": "^8.3.0",
+    "prisma": "^7.9.1",
+    "redis": "^6.2.1",
+    "socket.io": "^4.8.3"
+  }
+}

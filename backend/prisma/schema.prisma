@@ -1,0 +1,433 @@
+// ============================================================
+// PokerAI — Prisma Schema
+// Target DB: Neon (Serverless PostgreSQL)
+// ============================================================
+// Neon requires TWO connection strings:
+//   - DATABASE_URL : pooled connection (via PgBouncer) -> used at runtime
+// Both are provided in your Neon project dashboard.
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum FriendStatus {
+  PENDING
+  ACCEPTED
+  BLOCKED
+  DECLINED
+}
+
+enum RoomStatus {
+  WAITING
+  ACTIVE
+  ENDED
+  CANCELLED
+}
+
+enum RoomVisibility {
+  PRIVATE
+  FRIENDS_ONLY
+}
+
+enum OccupantType {
+  HUMAN
+  BOT
+}
+
+enum BotStrategy {
+  AGGRESSIVE
+  CONSERVATIVE
+  BALANCED
+  RISK_TAKER
+  BEGINNER
+}
+
+enum GameStatus {
+  IN_PROGRESS
+  COMPLETED
+  ABORTED
+}
+
+enum HandStage {
+  PRE_FLOP
+  FLOP
+  TURN
+  RIVER
+  SHOWDOWN
+}
+
+enum ActionType {
+  CHECK
+  CALL
+  BET
+  RAISE
+  FOLD
+  ALL_IN
+  POST_BLIND
+}
+
+enum SeatStatus {
+  ACTIVE
+  FOLDED
+  ALL_IN
+  SITTING_OUT
+  LEFT
+}
+
+// ============================================================
+// USER & AUTH
+// ============================================================
+
+model User {
+  id            String   @id @default(uuid())
+  username      String   @unique @db.VarChar(24)
+  email         String   @unique @db.VarChar(255)
+  passwordHash  String
+
+  displayName   String?  @db.VarChar(40)
+  avatarUrl     String?
+  bio           String?  @db.VarChar(280)
+
+  rating        Int      @default(1200)
+  chipsBalance  Int      @default(1000) // play-money chip wallet, not real currency
+
+  isActive      Boolean  @default(true)
+  isBanned      Boolean  @default(false)
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  lastSeenAt    DateTime @default(now())
+
+  // Relations
+  stats               PlayerStats?
+  refreshTokens        RefreshToken[]
+  hostedRooms          Room[]              @relation("RoomHost")
+  roomSeats            RoomSeat[]
+  handActions           HandAction[]
+  userAchievements      UserAchievement[]
+  sentFriendRequests    Friendship[]        @relation("RequestedBy")
+  receivedFriendRequests Friendship[]       @relation("RequestedTo")
+  gameReviews           GameReview[]
+  leaderboardSnapshots  LeaderboardEntry[]
+  auditLogs             AuditLog[]
+
+  @@index([username])
+  @@index([email])
+  @@index([rating])
+  @@map("users")
+}
+
+model RefreshToken {
+  id          String   @id @default(uuid())
+  userId      String
+  tokenHash   String   @unique // never store raw token
+  userAgent   String?
+  ipAddress   String?
+  isRevoked   Boolean  @default(false)
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+// ============================================================
+// FRIENDS SYSTEM
+// ============================================================
+
+model Friendship {
+  id            String       @id @default(uuid())
+  requesterId   String
+  addresseeId   String
+  status        FriendStatus @default(PENDING)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  requester     User @relation("RequestedBy", fields: [requesterId], references: [id], onDelete: Cascade)
+  addressee     User @relation("RequestedTo", fields: [addresseeId], references: [id], onDelete: Cascade)
+
+  @@unique([requesterId, addresseeId]) // prevents duplicate requests
+  @@index([addresseeId, status])
+  @@index([requesterId, status])
+  @@map("friendships")
+}
+
+// ============================================================
+// ROOM SYSTEM
+// ============================================================
+
+model Room {
+  id              String         @id @default(uuid())
+  code            String         @unique @db.VarChar(10) // shareable join code
+  hostId          String
+
+  name            String?        @db.VarChar(60)
+  visibility      RoomVisibility @default(PRIVATE)
+  status          RoomStatus     @default(WAITING)
+
+  minPlayers      Int            @default(2)
+  maxPlayers      Int            @default(10)
+
+  smallBlind      Int            @default(10)
+  bigBlind        Int            @default(20)
+  startingChips   Int            @default(1000)
+
+  allowBots       Boolean        @default(true)
+  botCount        Int            @default(0) // host-selected, 0 = none requested
+
+  createdAt       DateTime       @default(now())
+  startedAt       DateTime?
+  endedAt         DateTime?
+
+  host            User           @relation("RoomHost", fields: [hostId], references: [id])
+  seats           RoomSeat[]
+  games           Game[]
+
+  @@index([code])
+  @@index([status])
+  @@index([hostId])
+  @@map("rooms")
+}
+
+model RoomSeat {
+  id            String       @id @default(uuid())
+  roomId        String
+  seatNumber    Int          // 0–9 (max 10 seats)
+
+  occupantType  OccupantType
+  userId        String?      // null when occupantType = BOT
+  botStrategy   BotStrategy? // null when occupantType = HUMAN
+
+  chips         Int
+  status        SeatStatus   @default(ACTIVE)
+
+  joinedAt      DateTime     @default(now())
+  leftAt        DateTime?
+
+  room          Room         @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user          User?        @relation(fields: [userId], references: [id])
+  handActions   HandAction[]
+
+  @@unique([roomId, seatNumber])
+  @@index([roomId])
+  @@index([userId])
+  @@map("room_seats")
+}
+
+// ============================================================
+// GAME / HAND ENGINE RESULTS
+// (game logic itself lives in backend code — these tables are
+//  the authoritative persisted record of what happened)
+// ============================================================
+
+model Game {
+  id            String     @id @default(uuid())
+  roomId        String
+  status        GameStatus @default(IN_PROGRESS)
+
+  startedAt     DateTime   @default(now())
+  endedAt       DateTime?
+
+  room          Room       @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  hands         Hand[]
+  reviews       GameReview[]
+
+  @@index([roomId])
+  @@index([status])
+  @@map("games")
+}
+
+model Hand {
+  id             String      @id @default(uuid())
+  gameId         String
+  handNumber     Int
+
+  stage          HandStage   @default(PRE_FLOP)
+  board          String[]    @default([]) // community cards e.g. ["Qs","8s","2d"]
+  potSize        Int         @default(0)
+
+  winnerSeatId   String?
+  winningHand    String?     // e.g. "Full House, Kings over Queens"
+
+  startedAt      DateTime    @default(now())
+  endedAt        DateTime?
+
+  game           Game        @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  actions        HandAction[]
+
+  @@unique([gameId, handNumber])
+  @@index([gameId])
+  @@map("hands")
+}
+
+model HandAction {
+  id              String     @id @default(uuid())
+  handId          String
+  seatId          String
+  userId          String?    // denormalized for fast "my history" queries; null for bot seats
+
+  action          ActionType
+  amount          Int?
+  stage           HandStage
+  sequenceInHand  Int        // order of action within the hand
+
+  // Filled in later by the AI Poker Coach / review service
+  decisionScore   Int?       // 0–100
+  aiRecommended   ActionType?
+  aiExplanation   String?
+
+  createdAt       DateTime   @default(now())
+
+  hand            Hand       @relation(fields: [handId], references: [id], onDelete: Cascade)
+  seat            RoomSeat   @relation(fields: [seatId], references: [id], onDelete: Cascade)
+  user            User?      @relation(fields: [userId], references: [id])
+
+  @@index([handId])
+  @@index([seatId])
+  @@index([userId])
+  @@map("hand_actions")
+}
+
+// ============================================================
+// POST-GAME REVIEW / AI COACH
+// ============================================================
+
+model GameReview {
+  id                String   @id @default(uuid())
+  gameId            String
+  userId            String
+
+  overallScore      Int      // 0–100
+  chipsWon          Int      @default(0)
+  handsPlayed       Int      @default(0)
+  handsWon          Int      @default(0)
+
+  foldCount         Int      @default(0)
+  callCount         Int      @default(0)
+  raiseCount        Int      @default(0)
+
+  strengths         String[] @default([])
+  weaknesses        String[] @default([])
+  recommendation    String?
+
+  createdAt         DateTime @default(now())
+
+  game              Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([gameId, userId])
+  @@index([userId])
+  @@map("game_reviews")
+}
+
+// ============================================================
+// STATS / RATING / LEADERBOARD
+// ============================================================
+
+model PlayerStats {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+
+  gamesPlayed     Int      @default(0)
+  gamesWon        Int      @default(0)
+  handsPlayed     Int      @default(0)
+  handsWon        Int      @default(0)
+
+  totalFolds      Int      @default(0)
+  totalCalls      Int      @default(0)
+  totalRaises     Int      @default(0)
+
+  totalChipsWon   Int      @default(0)
+  totalChipsLost  Int      @default(0)
+
+  avgDecisionScore Float?  
+
+  currentStreak   Int      @default(0) // positive = win streak, negative = loss streak
+  bestStreak      Int      @default(0)
+
+  updatedAt       DateTime @updatedAt
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("player_stats")
+}
+
+model LeaderboardEntry {
+  id          String   @id @default(uuid())
+  userId      String
+
+  period      String   // "GLOBAL" | "WEEKLY" | "MONTHLY"
+  rating      Int
+  rank        Int
+
+  snapshotAt  DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([period, rank])
+  @@index([userId, period])
+  @@map("leaderboard_entries")
+}
+
+// ============================================================
+// ACHIEVEMENTS
+// ============================================================
+
+model Achievement {
+  id           String   @id @default(uuid())
+  key          String   @unique // e.g. "FIRST_WIN", "BEAT_9_BOTS"
+  title        String
+  description  String
+  iconUrl      String?
+
+  userAchievements UserAchievement[]
+
+  @@map("achievements")
+}
+
+model UserAchievement {
+  id             String      @id @default(uuid())
+  userId         String
+  achievementId  String
+  unlockedAt     DateTime    @default(now())
+
+  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievement    Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, achievementId])
+  @@index([userId])
+  @@map("user_achievements")
+}
+
+// ============================================================
+// AUDIT / SECURITY LOG
+// (for anti-cheat review and dispute resolution)
+// ============================================================
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  userId      String?
+  action      String   // e.g. "LOGIN", "ROOM_CREATE", "SUSPICIOUS_ACTION_RATE"
+  metadata    Json?
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+
+  user        User?    @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
