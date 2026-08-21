@@ -3,6 +3,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent))
 from data_utils import load_preflop_split
 from model_utils import evaluate_model
+from lightgbm import LGBMClassifier
 
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import LabelEncoder
@@ -29,6 +30,9 @@ y_test_encoded = label_encoder.transform(y_test)
 
 xgb_model = XGBClassifier(n_estimators=100, max_depth=6, random_state=42, eval_metric="mlogloss")
 results["XGBoost"] = evaluate_model("XGBoost", xgb_model, X_train, y_train_encoded, X_test, y_test_encoded)
+
+lgbm_model = LGBMClassifier(n_estimators=100, max_depth=6, random_state=42, verbose=-1)
+results["LightGBM"] = evaluate_model("LightGBM", lgbm_model, X_train, y_train, X_test, y_test)
 
 print("\n=== Summary so far ===")
 for name, acc in results.items():
