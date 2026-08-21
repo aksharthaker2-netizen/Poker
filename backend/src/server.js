@@ -5,20 +5,14 @@ const app = require('./app');
 const env = require('./config/env');
 const prisma = require('./config/db');
 const redisClient = require('./config/redis');
-const socketConfig = require('./config/socket');
+
+// Import the new modular socket orchestrator
+const { initializeSocket } = require('./socket/index');
 
 const server = http.createServer(app);
 
-// Initialize Socket.io using your new config
-const io = socketConfig.init(server);
-
-io.on('connection', (socket) => {
-  console.log(`[Socket] Client connected: ${socket.id}`);
-  
-  socket.on('disconnect', () => {
-    console.log(`[Socket] Client disconnected: ${socket.id}`);
-  });
-});
+// Initialize Socket.io and attach all domain handlers (rooms, game, friends)
+initializeSocket(server);
 
 // Graceful Shutdown
 const shutdown = async () => {
@@ -41,8 +35,8 @@ const startServer = async () => {
     await prisma.$connect();
     console.log('[DB] Successfully connected to Neon PostgreSQL');
 
-    // 2. Connect to Redis
-    //await redisClient.connect();
+    // 2. Connect to Redis (Currently bypassed for local development)
+    // await redisClient.connect();
 
     // 3. Start Server
     server.listen(env.PORT, () => {
