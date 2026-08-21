@@ -4,6 +4,7 @@ sys.path.append(str(Path(__file__).resolve().parent))
 from data_utils import load_preflop_split
 from model_utils import evaluate_model
 from lightgbm import LGBMClassifier
+from catboost import CatBoostClassifier
 
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import LabelEncoder
@@ -33,6 +34,10 @@ results["XGBoost"] = evaluate_model("XGBoost", xgb_model, X_train, y_train_encod
 
 lgbm_model = LGBMClassifier(n_estimators=100, max_depth=6, random_state=42, verbose=-1)
 results["LightGBM"] = evaluate_model("LightGBM", lgbm_model, X_train, y_train, X_test, y_test)
+
+catboost_model = CatBoostClassifier(n_estimators=100, max_depth=6, random_state=42, verbose=False)
+results["CatBoost"] = evaluate_model("CatBoost", catboost_model, X_train, y_train, X_test, y_test)
+
 
 print("\n=== Summary so far ===")
 for name, acc in results.items():
