@@ -1,14 +1,17 @@
 // src/gameEngine/potManager.js
 
 class PotManager {
+  /**
+   * @param {Array} players - Array of references to the GameEngine's player objects
+   */
   constructor(players) {
-    // players = [{ id: 'user_1', chips: 1000 }, { id: 'user_2', chips: 1000 }]
-    this.playerChips = {};
+    this.playerMap = new Map();
     this.currentRoundBets = {};
     this.activePlayers = new Set();
     
     players.forEach(p => {
-      this.playerChips[p.id] = p.chips;
+      // Store the literal object reference for a single source of truth
+      this.playerMap.set(p.id, p); 
       this.currentRoundBets[p.id] = 0;
       this.activePlayers.add(p.id);
     });
@@ -23,16 +26,19 @@ class PotManager {
     if (!this.activePlayers.has(playerId)) {
       throw new Error(`Player ${playerId} is not active in this hand.`);
     }
-    if (amount > this.playerChips[playerId]) {
+
+    const player = this.playerMap.get(playerId);
+    if (amount > player.chips) {
       throw new Error(`Player ${playerId} cannot bet more than their chip stack.`);
     }
 
-    this.playerChips[playerId] -= amount;
+    // Directly modifies the single source of truth (GameEngine's player array)
+    player.chips -= amount;
     this.currentRoundBets[playerId] += amount;
     
     return {
       success: true,
-      remainingChips: this.playerChips[playerId],
+      remainingChips: player.chips,
       totalBetThisRound: this.currentRoundBets[playerId]
     };
   }
@@ -42,7 +48,6 @@ class PotManager {
    */
   processFold(playerId) {
     this.activePlayers.delete(playerId);
-    // Update eligible players in all existing pots
     this.pots.forEach(pot => {
       pot.eligiblePlayers = pot.eligiblePlayers.filter(id => id !== playerId);
     });
@@ -55,7 +60,7 @@ class PotManager {
   sweepBetsToPot() {
     const bets = Object.entries(this.currentRoundBets)
       .filter(([_, amount]) => amount > 0)
-      .sort((a, b) => a[1] - b[1]); // Sort by bet amount ascending
+      .sort((a, b) => a[1] - b[1]);
 
     let processedAmount = 0;
 
@@ -63,18 +68,17 @@ class PotManager {
       const contribution = betAmount - processedAmount;
       if (contribution <= 0) continue;
 
-      // Add chips to the current active pot
       let currentPot = this.pots[this.pots.length - 1];
       
-      // Calculate how many active players can match this contribution
       const contributors = Object.keys(this.currentRoundBets).filter(
         id => this.currentRoundBets[id] >= betAmount
       );
 
       currentPot.amount += contribution * contributors.length;
 
-      // If a player is all-in (has 0 chips left), we must cap this pot and start a new side pot
-      if (this.playerChips[playerId] === 0 && this.activePlayers.has(playerId)) {
+      // Access the single source of truth to check for all-in status
+      const player = this.playerMap.get(playerId);
+      if (player.chips === 0 && this.activePlayers.has(playerId)) {
         const nextEligible = contributors.filter(id => id !== playerId && this.activePlayers.has(id));
         this.pots.push({ amount: 0, eligiblePlayers: nextEligible });
       }
@@ -82,7 +86,6 @@ class PotManager {
       processedAmount = betAmount;
     }
 
-    // Reset round bets for the next street (Flop, Turn, etc.)
     Object.keys(this.currentRoundBets).forEach(id => {
       this.currentRoundBets[id] = 0;
     });
