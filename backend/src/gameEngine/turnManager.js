@@ -19,7 +19,7 @@ class TurnManager {
    */
   setupNewHand() {
     const numPlayers = this.players.length;
-    
+
     // Move the button to the next player
     this.dealerIndex = (this.dealerIndex + 1) % numPlayers;
 
@@ -55,8 +55,12 @@ class TurnManager {
     let nextActorIndex = (this.dealerIndex + 1) % numPlayers;
 
     // Find the first player left of the dealer who hasn't folded
+    let attempts = 0;
     while (!activePlayerIdsThisRound.includes(this.players[nextActorIndex])) {
       nextActorIndex = (nextActorIndex + 1) % numPlayers;
+      attempts += 1;
+      // Safety break to prevent infinite loops if the active list is stale/empty
+      if (attempts > numPlayers) break;
     }
 
     this.currentPlayerIndex = nextActorIndex;
@@ -73,9 +77,9 @@ class TurnManager {
     // Skip players who have folded or are all-in
     while (!activePlayerIdsThisRound.includes(this.players[nextIndex])) {
       nextIndex = (nextIndex + 1) % numPlayers;
-      
+
       // Safety break to prevent infinite loops if something goes wrong
-      if (nextIndex === this.currentPlayerIndex) break; 
+      if (nextIndex === this.currentPlayerIndex) break;
     }
 
     this.currentPlayerIndex = nextIndex;
@@ -83,15 +87,43 @@ class TurnManager {
   }
 
   /**
-   * Handles when a player leaves the table entirely.
+   * Handles when a player leaves the table entirely (busted, disconnected, quit).
+   *
+   * FIX: Previously this only reset dealerIndex/currentPlayerIndex when they
+   * fell OUT OF BOUNDS after the splice. Because splice() shifts every
+   * subsequent element's index down by one, an in-bounds index could silently
+   * end up pointing at a DIFFERENT player than before (the dealer button or
+   * current turn could invisibly "jump" to someone else).
+   *
+   * Fix: resolve the dealer/current-actor by their ID *before* the splice,
+   * then re-locate that same ID *after* the splice, so the button and turn
+   * stay attached to the correct player (or fall back to seat 0 if the
+   * removed player themself was the dealer/current actor).
    */
   removePlayer(playerId) {
     const index = this.players.indexOf(playerId);
-    if (index > -1) {
-      this.players.splice(index, 1);
-      // Adjust indices if necessary so we don't skip a player's turn
-      if (this.dealerIndex >= this.players.length) this.dealerIndex = 0;
-      if (this.currentPlayerIndex >= this.players.length) this.currentPlayerIndex = 0;
+    if (index === -1) return; // player not tracked here, nothing to do
+
+    const dealerPlayerId = this.players[this.dealerIndex];
+    const currentActorPlayerId =
+      this.currentPlayerIndex >= 0 ? this.players[this.currentPlayerIndex] : null;
+
+    this.players.splice(index, 1);
+
+    if (this.players.length === 0) {
+      this.dealerIndex = 0;
+      this.currentPlayerIndex = -1;
+      return;
+    }
+
+    const newDealerIndex = this.players.indexOf(dealerPlayerId);
+    this.dealerIndex = newDealerIndex === -1 ? 0 : newDealerIndex;
+
+    if (currentActorPlayerId === null) {
+      this.currentPlayerIndex = -1;
+    } else {
+      const newCurrentIndex = this.players.indexOf(currentActorPlayerId);
+      this.currentPlayerIndex = newCurrentIndex === -1 ? 0 : newCurrentIndex;
     }
   }
 }

@@ -1,8 +1,10 @@
 // src/gameEngine/shuffle.js
+const { randomInt } = require('crypto');
 
 /**
  * Performs a Fisher-Yates shuffle on a deck of cards.
- * This runs in O(n) time and ensures a perfectly random distribution.
+ * Uses Node's native crypto module for cryptographically secure randomization
+ * to prevent PRNG state deduction attacks.
  * 
  * @param {Array} deck - The un-shuffled deck array
  * @returns {Array} A new array containing the shuffled deck
@@ -12,8 +14,8 @@ function shuffleDeck(deck) {
   const shuffled = [...deck]; 
   
   for (let i = shuffled.length - 1; i > 0; i--) {
-    // Pick a random index from 0 to i
-    const j = Math.floor(Math.random() * (i + 1));
+    // Pick a cryptographically secure random index from 0 to i (inclusive)
+    const j = randomInt(0, i + 1);
     
     // Swap the elements
     [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];

@@ -37,6 +37,20 @@ function getCombinations(cards, comboSize = 5) {
 }
 
 /**
+ * Helper function to sort tie-breakers by group frequency first, then by card value.
+ * Ensures a hand like Q-Q-Q-Q-A prioritizes the Queens (12) over the Ace (14).
+ */
+function getTieBreakerScore(sortedCards, counts) {
+  const uniqueValues = [...new Set(sortedCards.map(c => c.value))];
+  return uniqueValues
+    .sort((a, b) => {
+      if (counts[b] !== counts[a]) return counts[b] - counts[a]; // Bigger group first
+      return b - a; // Then higher value
+    })
+    .flatMap(value => Array(counts[value]).fill(value));
+}
+
+/**
  * Evaluates a single 5-card hand and returns its rank and tie-breaker score.
  */
 function evaluateFiveCards(fiveCards) {
@@ -69,7 +83,11 @@ function evaluateFiveCards(fiveCards) {
   });
 
   const frequencies = Object.values(counts).sort((a, b) => b - a);
-  const tieBreakerValues = sorted.map(c => c.value);
+  
+  // APPLY CRITICAL FIX: Group-aware sorting for tie-breakers
+  const tieBreakerValues = isStraight
+    ? sorted.map(c => c.value) // preserves the ace-low wheel fix
+    : getTieBreakerScore(sorted, counts);
 
   // 1. Royal & Straight Flush
   if (isFlush && isStraight) {
