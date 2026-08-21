@@ -48,3 +48,20 @@ print(f"\nFraction of 'call' decisions facing an all-in: {facing_allin:.2%}")
 raise_rows = df[df["action_label"] == "raise"]
 is_opening_raise = (raise_rows["num_bets"] <= 1).mean()
 print(f"Fraction of 'raise' decisions that are early/opening raises: {is_opening_raise:.2%}")
+position_dummies = pd.get_dummies(df["hero_pos"], prefix="pos")
+
+X = pd.concat([
+    df[["our_hand_strength", "num_bets", "pot_size", "num_players"]],
+    position_dummies,
+], axis=1)
+
+y = df["action_label"]
+
+print("X shape:", X.shape)
+print("X columns:", list(X.columns))
+print()
+print("First 3 rows of X:")
+print(X.head(3))
+print()
+print("First 3 values of y:")
+print(y.head(3))
