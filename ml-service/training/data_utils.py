@@ -1,7 +1,7 @@
 import sys
 from pathlib import Path
 import pandas as pd
-
+import re
 sys.path.append(str(Path(__file__).resolve().parent.parent / "app"))
 from features import hand_strength
 
@@ -60,6 +60,37 @@ def _get_board_for_street(row):
         return flop + [row["board_turn"], row["board_river"]]
 
 
+def _count_aggression(action_str):
+    if pd.isna(action_str):
+        return 0
+    return action_str.count("BET") + action_str.count("RAISE")
+
+
+def _board_texture(cards):
+    ranks = [c[0] for c in cards]
+    suits = [c[1] for c in cards]
+    is_paired = int(len(ranks) != len(set(ranks)))
+    suit_counts = {s: suits.count(s) for s in set(suits)}
+    flush_possible = int(max(suit_counts.values()) >= 3)
+    return is_paired, flush_possible
+
+
+def _facing_bet_amount(action_str):
+    if pd.isna(action_str) or action_str == "":
+        return 0
+    matches = re.findall(r"(?:BET|RAISE)_(\d+)", action_str)
+    return int(matches[-1]) if matches else 0
+
+
+_RANK_TO_NUM = {r: i for i, r in enumerate("23456789TJQKA", start=2)}
+
+
+def _straight_possible(cards):
+    nums = sorted(set(_RANK_TO_NUM[c[0]] for c in cards))
+    if len(nums) < 2:
+        return 0
+    return int(nums[-1] - nums[0] <= 4)
+
 def load_postflop_split(url, cache_filename):
     local_path = DATA_DIR / cache_filename
     if local_path.exists():
@@ -74,12 +105,21 @@ def load_postflop_split(url, cache_filename):
         lambda row: hand_strength([row["holding"][0:2], row["holding"][2:4]], row["community_cards"]),
         axis=1,
     )
+    df["num_prior_bets"] = df["postflop_action"].apply(_count_aggression)
+    df["is_hero_aggressor"] = (df["hero_position"] == df["aggressor_position"]).astype(int)
+    df["facing_bet_to_pot"] = df["postflop_action"].apply(_facing_bet_amount) / df["pot_size"].replace(0, 1)
+
+    texture = df["community_cards"].apply(_board_texture)
+    df["board_paired"] = texture.apply(lambda t: t[0])
+    df["board_flush_possible"] = texture.apply(lambda t: t[1])
+    df["board_straight_possible"] = df["community_cards"].apply(_straight_possible)
 
     street_dummies = pd.get_dummies(df["evaluation_at"], prefix="street").astype(int)
     position_dummies = pd.get_dummies(df["hero_position"], prefix="pos").astype(int)
 
     X = pd.concat([
-        df[["our_hand_strength", "pot_size"]],
+        df[["our_hand_strength", "pot_size", "num_prior_bets", "is_hero_aggressor",
+            "facing_bet_to_pot", "board_paired", "board_flush_possible", "board_straight_possible"]],
         street_dummies,
         position_dummies,
     ], axis=1)
