@@ -26,14 +26,48 @@ function dealPrivateHands(io, room) {
  */
 function buildPublicPayload(room, actionResult) {
   const game = room.game;
+
+  // FIX: read highestBet from bettingManager directly rather than trusting
+  // actionResult.highestBet. GameEngine.nextStreet() (unlike
+  // handlePlayerAction()) never included highestBet in its return value,
+  // so after every Flop/Turn/River transition this field was `undefined`
+  // until the next action. bettingManager.highestBet is always current
+  // regardless of which engine method just ran.
+  const highestBet = game.bettingManager.highestBet;
+
   const payload = {
     state: actionResult.state,
     nextPlayerId: actionResult.nextPlayerId,
     potSize: actionResult.potSize,
-    highestBet: actionResult.highestBet,
+    highestBet,
     communityCards: game.communityCards,
-    players: game.players // chips/status only — no hole cards live here
+    players: game.players, // chips/status only — no hole cards live here
+    actionInfo: null
   };
+
+  // FIX: previously the frontend had to guess Check-vs-Call and raise
+  // minimums from `highestBet` alone, which is only an approximation once
+  // a player has already contributed something this round. Compute the
+  // EXACT legal-actions set for whoever's turn it is next — the same
+  // computation botManager already relies on for bots — and hand it to
+  // the client. The server still re-validates every action regardless,
+  // this just lets the UI be precise instead of best-effort.
+  const isBettingPhase = actionResult.state !== 'SHOWDOWN' && actionResult.state !== 'WAITING';
+  if (isBettingPhase && actionResult.nextPlayerId) {
+    const nextPlayer = game.players.find(p => p.id === actionResult.nextPlayerId);
+    if (nextPlayer) {
+      const { amountToCall, minRaiseAmount, legalActions } = game.bettingManager.getLegalActions(
+        actionResult.nextPlayerId,
+        nextPlayer.chips
+      );
+      payload.actionInfo = {
+        playerId: actionResult.nextPlayerId,
+        amountToCall,
+        minRaiseAmount,
+        legalActions
+      };
+    }
+  }
 
   if (actionResult.state === 'SHOWDOWN') {
     payload.results = actionResult.results;

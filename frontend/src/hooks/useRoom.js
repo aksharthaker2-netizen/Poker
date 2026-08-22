@@ -1,0 +1,98 @@
+// src/hooks/useRoom.js
+import { useEffect, useCallback } from 'react';
+import { useSocket } from './useSocket';
+import { emitWithAck } from '../services/socket';
+import { useRoomStore } from '../store/roomStore';
+import { useGameStore } from '../store/gameStore';
+
+/**
+ * @param {string} currentUserId - the logged-in user's id (from your auth
+ *   flow — read from wherever you store it after login, e.g. localStorage
+ *   or an auth store). Only used client-side to compute `isHost`; the
+ *   server never trusts anything the client sends as an id.
+ */
+export function useRoom(currentUserId) {
+  const socket = useSocket();
+  const { room, isHost, error, setRoom, setError, clearRoom } = useRoomStore();
+  const applyGameStarted = useGameStore((s) => s.applyGameStarted);
+
+  useEffect(() => {
+    if (!socket) return;
+
+    const onRoomUpdated = ({ room: updatedRoom }) => {
+      setRoom(updatedRoom, currentUserId);
+    };
+
+    const onGameStarted = (payload) => {
+      applyGameStarted(payload);
+      setRoom({ ...room, status: 'PLAYING' }, currentUserId);
+    };
+
+    socket.on('ROOM_UPDATED', onRoomUpdated);
+    socket.on('GAME_STARTED', onGameStarted);
+
+    return () => {
+      socket.off('ROOM_UPDATED', onRoomUpdated);
+      socket.off('GAME_STARTED', onGameStarted);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [socket, currentUserId]);
+
+  const createRoom = useCallback(
+    async (username, settings) => {
+      try {
+        const res = await emitWithAck('CREATE_ROOM', { username, settings });
+        setRoom(res.room, currentUserId);
+        return res.room;
+      } catch (err) {
+        setError(err.message);
+        throw err;
+      }
+    },
+    [currentUserId, setRoom, setError]
+  );
+
+  const joinRoom = useCallback(
+    async (roomId, username, requestedSeat = null) => {
+      try {
+        const res = await emitWithAck('JOIN_ROOM', { roomId, username, requestedSeat });
+        setRoom(res.room, currentUserId);
+        return res.room;
+      } catch (err) {
+        setError(err.message);
+        throw err;
+      }
+    },
+    [currentUserId, setRoom, setError]
+  );
+
+  const addBot = useCallback(
+    async (roomId, requestedSeat = null) => {
+      try {
+        const res = await emitWithAck('ADD_BOT', { roomId, requestedSeat });
+        setRoom(res.room, currentUserId);
+        return res.room;
+      } catch (err) {
+        setError(err.message);
+        throw err;
+      }
+    },
+    [currentUserId, setRoom, setError]
+  );
+
+  const startGame = useCallback(
+    async (roomId) => {
+      try {
+        await emitWithAck('START_GAME', { roomId });
+        // GAME_STARTED event (handled above) drives the actual state
+        // transition — this just confirms the request was accepted.
+      } catch (err) {
+        setError(err.message);
+        throw err;
+      }
+    },
+    [setError]
+  );
+
+  return { room, isHost, error, createRoom, joinRoom, addBot, startGame, clearRoom };
+}
