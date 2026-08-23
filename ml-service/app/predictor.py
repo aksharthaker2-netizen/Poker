@@ -62,9 +62,12 @@ def predict_postflop_action(hole_cards, community_cards, pot_size, to_call, min_
     prediction_encoded = _postflop_model.predict(X)[0]
     action = _postflop_label_encoder.inverse_transform([prediction_encoded])[0]
 
+    if action == "fold" and to_call <= 0:
+        action = "check"
+
     if action == "raise":
         return "raise", min_raise
-    elif action == "check":
+    elif action in ("check", "call") and to_call <= 0:
         return "call", None
     else:
         return action, None

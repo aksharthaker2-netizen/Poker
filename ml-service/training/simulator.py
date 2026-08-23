@@ -179,3 +179,38 @@ def play_hand_and_log_opening(villain_decide_fn=xgboost_bot_decide, explore_rate
     hero_profit, villain_profit, outcome = play_one_hand(logging_hero_fn, villain_decide_fn, big_blind=big_blind)
     log_entry["hero_profit"] = hero_profit
     return log_entry
+
+def play_hand_and_log_postflop(villain_decide_fn=xgboost_bot_decide, explore_rate=0.5, big_blind=10):
+    logs = []
+
+    def logging_hero_fn(hole_cards, community_cards, pot_size, to_call, min_raise, num_bets, position, big_blind=big_blind):
+        if not community_cards:
+            return xgboost_bot_decide(hole_cards, community_cards, pot_size, to_call, min_raise, num_bets, position, big_blind)
+
+        strength = features.hand_strength(hole_cards, community_cards)
+        facing_bet_to_pot = (to_call / pot_size) if pot_size > 0 else 0
+        street_map = {3: "Flop", 4: "Turn", 5: "River"}
+        street = street_map.get(len(community_cards), "Flop")
+
+        if random.random() < explore_rate:
+            action = random.choice(["fold", "call", "raise"])
+        else:
+            action, _ = predictor.predict_postflop_action(
+                hole_cards, community_cards, pot_size, to_call, min_raise,
+                num_prior_bets=num_bets, is_hero_aggressor=False, street=street, hero_is_ip=False,
+            )
+        raise_amount = min_raise if action == "raise" else None
+
+        logs.append({
+            "hand_strength": strength,
+            "facing_bet_to_pot": facing_bet_to_pot,
+            "facing_a_bet": to_call > 0,
+            "street": street,
+            "action": action,
+        })
+        return action, raise_amount
+
+    hero_profit, villain_profit, outcome = play_one_hand(logging_hero_fn, villain_decide_fn, big_blind=big_blind)
+    for entry in logs:
+        entry["hero_profit"] = hero_profit
+    return logs
