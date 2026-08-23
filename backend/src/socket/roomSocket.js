@@ -89,7 +89,7 @@ module.exports = function registerRoomHandlers(io, socket) {
       if (!room) throw new Error('Room not found.');
       if (room.hostId !== userId) throw new Error('Only the table host can start the game.');
 
-      const { initialGameState } = roomManager.startGame(roomId);
+      const { initialGameState } = await roomManager.startGame(roomId);
       console.log(`[Room] Game started in room ${roomId}`);
 
       // PUBLIC state only. NEVER include initialGameState.playerHands here —

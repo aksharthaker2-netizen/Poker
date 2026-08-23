@@ -214,6 +214,11 @@ async function persistCompletedHand(room, showdownResult) {
 }
 
 async function markGameEnded(room) {
+  // Room status transitions to ENDED regardless of whether a DB Game
+  // record exists for it, so this check must be independent of
+  // room.game._dbGameId (that guard only applies to the Game update below).
+  await updateRoomStatus(room, 'ENDED');
+
   if (!room.game?._dbGameId) return;
   try {
     await prisma.game.update({
@@ -225,9 +230,39 @@ async function markGameEnded(room) {
   }
 }
 
+/**
+ * Syncs the DB Room row's status to match the in-memory room's lifecycle.
+ * Best-effort and non-blocking, like every other write in this file — a
+ * failure here must never affect gameplay, it just means this one read
+ * endpoint (roomController.getMyRooms) shows a stale status until the
+ * next successful sync.
+ *
+ * NOTE: in-memory `room.status` uses 'WAITING' | 'PLAYING' (seatManager/
+ * roomManager's own vocabulary), which does NOT match the Prisma
+ * RoomStatus enum ('WAITING' | 'ACTIVE' | 'ENDED' | 'CANCELLED') — callers
+ * pass the already-translated DB enum value in explicitly rather than
+ * this function guessing a mapping.
+ */
+async function updateRoomStatus(room, dbStatus) {
+  if (!room.dbId) return;
+  try {
+    await prisma.room.update({
+      where: { id: room.dbId },
+      data: {
+        status: dbStatus,
+        ...(dbStatus === 'ACTIVE' ? { startedAt: new Date() } : {}),
+        ...(dbStatus === 'ENDED' ? { endedAt: new Date() } : {})
+      }
+    });
+  } catch (error) {
+    console.error('[Persistence] Failed to update Room status:', error.message);
+  }
+}
+
 module.exports = {
   createRoomRecord,
   persistHandAction,
   persistCompletedHand,
-  markGameEnded
+  markGameEnded,
+  updateRoomStatus
 };

@@ -153,8 +153,12 @@ class RoomManager {
 
   /**
    * Instantiates the GameEngine using the strict table-order of the seats.
+   *
+   * FIX: now async — also syncs the DB Room.status to 'ACTIVE' so
+   * roomController.getMyRooms (REST) isn't permanently stuck showing
+   * 'WAITING' for every room that has actually started playing.
    */
-  startGame(roomId) {
+  async startGame(roomId) {
     const room = this.rooms.get(roomId);
     if (!room) throw new Error('Room not found.');
 
@@ -169,6 +173,11 @@ class RoomManager {
     room.status = 'PLAYING';
 
     const initialGameState = room.game.startHand();
+
+    // Best-effort, non-blocking — the game has already started in-memory
+    // regardless of whether this DB write succeeds.
+    persistenceService.updateRoomStatus(room, 'ACTIVE');
+
     return { room, initialGameState };
   }
 
