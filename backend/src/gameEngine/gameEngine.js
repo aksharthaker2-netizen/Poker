@@ -50,6 +50,15 @@ class GameEngine {
 
     if (this.players.length < 2) throw new Error('Not enough players to start.');
 
+    // Reset per-hand persistence bookkeeping. `_dbHandId` is set/cleared
+    // by persistenceService.js as hands are created/finalized in the DB;
+    // `actionSequence`/`lastAction` are read by gameFlowManager.js after
+    // every handlePlayerAction() call to log a HandAction row without
+    // every socket handler needing to duplicate that logic.
+    this._dbHandId = null;
+    this.actionSequence = 0;
+    this.lastAction = null;
+
     this.deck = shuffleDeck(createDeck());
     this.communityCards = [];
     this.state = GAME_STATES.PRE_FLOP;
@@ -118,7 +127,21 @@ class GameEngine {
     const playerChips = playerObj.chips;
 
     // 2. Validate and process the math of the bet
+    const stageAtAction = this.state; // capture the street BEFORE any nextStreet()/showdown call below moves it
     const chipsCommitted = this.bettingManager.processAction(playerId, action, additionalChips, playerChips);
+
+    // Record what just happened for gameFlowManager.js to persist as a
+    // HandAction row. Set here (right after validation succeeds) rather
+    // than at the end of this method, so it's correct regardless of which
+    // branch below runs next (next street / showdown / next turn).
+    this.actionSequence += 1;
+    this.lastAction = {
+      playerId,
+      action,
+      amount: chipsCommitted,
+      stage: stageAtAction,
+      sequenceInHand: this.actionSequence
+    };
 
     // 3. Physically move the chips (PotManager alters playerObj.chips via reference)
     if (chipsCommitted > 0) {

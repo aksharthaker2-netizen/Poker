@@ -55,32 +55,78 @@ async function ensureGameRecord(room) {
 }
 
 /**
- * Writes a completed hand's summary (board, pot, winner) and bumps
- * PlayerStats for every human who played it.
- *
- * NOTE: this does NOT log individual fold/call/raise actions
- * (HandAction rows) — the schema's HandAction.seatId is a hard FK to a
- * persisted RoomSeat row, and seats currently only exist in-memory
- * (seatManager). Wiring that up (either persisting RoomSeat rows on
- * every join/leave, or loosening that FK to a plain string like
- * Hand.winnerSeatId already is) is a deliberate follow-up — needed for
- * the hand-by-hand AI coach feature, not for basic gameplay/stats.
+ * Lazily creates the Hand row for the CURRENT hand, on its first action —
+ * not at showdown. HandAction rows need a real handId to attach to as
+ * actions happen throughout the hand, well before it resolves.
+ * `game._dbHandId` is reset to null in GameEngine.startHand() (new hand,
+ * no row yet) and again after persistCompletedHand() finalizes it (so the
+ * NEXT hand creates a fresh row).
  */
-async function persistCompletedHand(room, showdownResult) {
+async function ensureHandRecord(room) {
   const dbGameId = await ensureGameRecord(room);
-  if (!dbGameId) return;
+  if (!dbGameId) return null;
+  if (room.game._dbHandId) return room.game._dbHandId;
 
   try {
     const handNumber = ++room.game._handCounter;
+    const dbHand = await prisma.hand.create({
+      data: { gameId: dbGameId, handNumber, stage: 'PRE_FLOP' }
+    });
+    room.game._dbHandId = dbHand.id;
+    return dbHand.id;
+  } catch (error) {
+    console.error('[Persistence] Failed to create Hand record:', error.message);
+    return null;
+  }
+}
 
+/**
+ * Persists a single fold/check/call/bet/raise/all-in as a HandAction row.
+ * Called once per GameEngine.handlePlayerAction() call — for every
+ * player, human or bot (bots just get userId: null; see HandAction.seatId's
+ * schema comment for why that doesn't need a RoomSeat FK).
+ */
+async function persistHandAction(room, lastAction) {
+  const dbHandId = await ensureHandRecord(room);
+  if (!dbHandId) return;
+
+  try {
+    const seat = room.seats.find((s) => s && s.id === lastAction.playerId);
+    const isHuman = seat && !seat.isBot;
+
+    await prisma.handAction.create({
+      data: {
+        handId: dbHandId,
+        seatId: lastAction.playerId,
+        userId: isHuman ? lastAction.playerId : null,
+        action: lastAction.action,
+        amount: lastAction.amount,
+        stage: lastAction.stage,
+        sequenceInHand: lastAction.sequenceInHand
+      }
+    });
+  } catch (error) {
+    console.error('[Persistence] Failed to save hand action:', error.message);
+  }
+}
+
+/**
+ * Finalizes the CURRENT hand's row (board/pot/winner) and bumps
+ * PlayerStats for every human who played it. Then clears `_dbHandId` so
+ * the next hand's first action creates a fresh Hand row.
+ */
+async function persistCompletedHand(room, showdownResult) {
+  const dbHandId = room.game._dbHandId;
+  if (!dbHandId) return; // no actions were ever logged for this hand — nothing to finalize
+
+  try {
     const totalPot = (showdownResult.results || []).reduce((sum, pot) => sum + pot.amount, 0);
     const topPot = showdownResult.results?.[0];
     const winner = topPot?.winners?.[0];
 
-    await prisma.hand.create({
+    await prisma.hand.update({
+      where: { id: dbHandId },
       data: {
-        gameId: dbGameId,
-        handNumber,
         stage: 'SHOWDOWN',
         board: room.game.communityCards.map((c) => `${c.rank}${c.suit[0]}`),
         potSize: totalPot,
@@ -119,7 +165,11 @@ async function persistCompletedHand(room, showdownResult) {
       })
     );
   } catch (error) {
-    console.error('[Persistence] Failed to save hand:', error.message);
+    console.error('[Persistence] Failed to finalize hand:', error.message);
+  } finally {
+    // Always clear, even on failure — better to lose one hand's row than
+    // have the next hand's actions silently attach to a stale/broken one.
+    room.game._dbHandId = null;
   }
 }
 
@@ -135,4 +185,9 @@ async function markGameEnded(room) {
   }
 }
 
-module.exports = { createRoomRecord, persistCompletedHand, markGameEnded };
+module.exports = {
+  createRoomRecord,
+  persistHandAction,
+  persistCompletedHand,
+  markGameEnded
+};
