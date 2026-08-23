@@ -40,6 +40,8 @@ def load_preflop_split(url, cache_filename):
         X[f"pos_{pos}"] = (df["hero_pos"] == pos).astype(int)
 
     y = df["action_label"]
+    print(y.value_counts(normalize=True))
+    print(X[["our_hand_strength", "num_bets", "pot_size", "num_players"]].describe())
     return X, y
 
 

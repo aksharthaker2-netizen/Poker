@@ -16,3 +16,26 @@ winner, pot, hero_stack, villain_stack = run_betting_street(
     num_bets=0, min_raise=20,
 )
 print(f"Winner: {winner}, Pot: {pot}, Hero stack: {hero_stack}, Villain stack: {villain_stack}")
+
+from simulator import resolve_showdown
+
+# Hero has top pair of Aces, villain has nothing -- hero should win
+result = resolve_showdown(
+    hero_hole=["Ah", "Ks"],
+    villain_hole=["7c", "2d"],
+    board=["Ad", "Jh", "4s", "9c", "3h"],
+)
+print(f"Hero AK vs Villain 72 on A-J-4-9-3 board: {result}")
+
+# A clear villain win -- villain has a flush, hero just has a pair
+result2 = resolve_showdown(
+    hero_hole=["Ah", "Ks"],
+    villain_hole=["2c", "7c"],
+    board=["Ad", "3c", "4c", "9c", "Kh"],
+)
+print(f"Hero AK (pair) vs Villain 27 (flush) on A-3-4-9-K (3 clubs): {result2}")
+
+from simulator import play_one_hand, heuristic_bot_decide, xgboost_bot_decide
+
+hero_profit, villain_profit = play_one_hand(xgboost_bot_decide, heuristic_bot_decide)
+print(f"XGBoost bot profit: {hero_profit}, Heuristic bot profit: {villain_profit}")

@@ -23,3 +23,9 @@ def predict_preflop_action(hand_strength, num_bets, pot_size, num_players, posit
     prediction_encoded = _model.predict(X)[0]
     action = _label_encoder.inverse_transform([prediction_encoded])[0]
     return action
+
+def predict_headsup_opening_action(hand_strength, min_raise):
+    if hand_strength < 0.3:
+        return "call", None
+    else:
+        return "raise", min_raise
