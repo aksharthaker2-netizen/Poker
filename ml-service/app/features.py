@@ -53,3 +53,21 @@ def build_feature_vector(hole_cards, community_cards, pot_size, to_call) -> dict
         "hand_strength": hand_strength(hole_cards, community_cards),
         "pot_odds": pot_odds(pot_size, to_call),
     }
+
+def board_texture(cards):
+    ranks = [c[0] for c in cards]
+    suits = [c[1] for c in cards]
+    is_paired = int(len(ranks) != len(set(ranks)))
+    suit_counts = {s: suits.count(s) for s in set(suits)}
+    flush_possible = int(max(suit_counts.values()) >= 3)
+    return is_paired, flush_possible
+
+
+_RANK_TO_NUM = {r: i for i, r in enumerate("23456789TJQKA", start=2)}
+
+
+def straight_possible(cards):
+    nums = sorted(set(_RANK_TO_NUM[c[0]] for c in cards))
+    if len(nums) < 2:
+        return 0
+    return int(nums[-1] - nums[0] <= 4)

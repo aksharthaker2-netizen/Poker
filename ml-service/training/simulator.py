@@ -43,9 +43,12 @@ def xgboost_bot_decide(hole_cards, community_cards, pot_size, to_call, min_raise
         )
         return action, (min_raise if action == "raise" else None)
 
-    feats = features.build_feature_vector(hole_cards, community_cards, pot_size, to_call)
-    result = decision_engine.decide(feats, min_raise)
-    return result["action"], result["raise_amount"]
+    street_map = {3: "Flop", 4: "Turn", 5: "River"}
+    street = street_map.get(len(community_cards), "Flop")
+    return predictor.predict_postflop_action(
+        hole_cards, community_cards, pot_size, to_call, min_raise,
+        num_prior_bets=num_bets, is_hero_aggressor=False, street=street, hero_is_ip=False,
+    )
 
 
 def heuristic_bot_decide(hole_cards, community_cards, pot_size, to_call, min_raise, num_bets=0, position=None, big_blind=10):
