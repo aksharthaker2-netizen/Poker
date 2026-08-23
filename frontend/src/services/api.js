@@ -86,6 +86,16 @@ export const userApi = {
   getStats: (userId) => api.get(`/api/users/${userId}/stats`)
 };
 
+export const friendsApi = {
+  search: (q) => api.get(`/api/friends/search?q=${encodeURIComponent(q)}`),
+  list: () => api.get('/api/friends'),
+  listRequests: () => api.get('/api/friends/requests'),
+  sendRequest: (targetUserId) => api.post('/api/friends/request', { targetUserId }),
+  accept: (friendshipId) => api.post(`/api/friends/${friendshipId}/accept`),
+  decline: (friendshipId) => api.post(`/api/friends/${friendshipId}/decline`),
+  remove: (friendshipId) => api.delete(`/api/friends/${friendshipId}`)
+};
+
 export const leaderboardApi = {
   getGlobal: (period = 'GLOBAL') => api.get(`/api/leaderboard?period=${period}`)
 };

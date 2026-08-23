@@ -4,48 +4,28 @@ import Login from './pages/Login';
 import Home from './pages/Home';
 import Room from './pages/Room';
 import Game from './pages/Game';
+import Profile from './pages/Profile';
+import Leaderboard from './pages/Leaderboard';
+import Friends from './pages/Friends';
 
-/**
- * Guards routes that need a logged-in session. Checked client-side only
- * for UX (instant redirect, no flash of broken content) — the backend
- * remains the actual enforcement point: every REST call carries the
- * token via api.js's interceptor, and the socket connection itself is
- * rejected by socketAuthMiddleware if the token is missing/invalid.
- */
 function RequireAuth({ children }) {
   const hasSession = Boolean(localStorage.getItem('accessToken'));
   return hasSession ? children : <Navigate to="/login" replace />;
 }
+
+const protect = (element) => <RequireAuth>{element}</RequireAuth>;
 
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
-        <Route
-          path="/"
-          element={
-            <RequireAuth>
-              <Home />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/room/:roomId"
-          element={
-            <RequireAuth>
-              <Room />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/game/:roomId"
-          element={
-            <RequireAuth>
-              <Game />
-            </RequireAuth>
-          }
-        />
+        <Route path="/" element={protect(<Home />)} />
+        <Route path="/room/:roomId" element={protect(<Room />)} />
+        <Route path="/game/:roomId" element={protect(<Game />)} />
+        <Route path="/profile" element={protect(<Profile />)} />
+        <Route path="/leaderboard" element={protect(<Leaderboard />)} />
+        <Route path="/friends" element={protect(<Friends />)} />
       </Routes>
     </BrowserRouter>
   );
