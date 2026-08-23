@@ -10,11 +10,11 @@ module.exports = function registerRoomHandlers(io, socket) {
   const userId = socket.data.userId;
 
   // 1. CREATE A NEW ROOM
-  socket.on('CREATE_ROOM', (payload, callback) => {
+  socket.on('CREATE_ROOM', async (payload, callback) => {
     try {
       const { username, settings } = payload;
 
-      const newRoom = roomManager.createRoom(userId, settings);
+      const newRoom = await roomManager.createRoom(userId, settings);
       socket.join(newRoom.id);
 
       // Automatically put the host into a seat

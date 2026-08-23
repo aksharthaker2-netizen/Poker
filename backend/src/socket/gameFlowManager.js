@@ -1,6 +1,7 @@
 // src/socket/gameFlowManager.js
 const roomManager = require('../managers/roomManager');
 const botManager = require('../managers/botManager');
+const persistenceService = require('../services/persistenceService');
 
 /**
  * Privately deals each seated human their own two hole cards.
@@ -93,6 +94,13 @@ async function broadcastAndCheckBot(io, roomId, actionResult) {
   if (!room || !room.game) return;
 
   io.to(roomId).emit('GAME_STATE_UPDATED', buildPublicPayload(room, actionResult));
+
+  if (actionResult.state === 'SHOWDOWN') {
+    // Fire-and-forget: persistence must never delay the broadcast or
+    // block the next hand from starting. Failures are logged inside
+    // persistenceService and never thrown back up to here.
+    persistenceService.persistCompletedHand(room, actionResult);
+  }
 
   if (actionResult.state === 'WAITING' || actionResult.state === 'SHOWDOWN') {
     return;

@@ -1,22 +1,24 @@
 // src/config/env.js
-require('dotenv').config();
+const { z } = require('zod');
 
-const env = {
-  PORT: process.env.PORT || 5000,
-  NODE_ENV: process.env.NODE_ENV || 'development',
-  CLIENT_URL: process.env.CLIENT_URL || '*',
-  DATABASE_URL: process.env.DATABASE_URL,
-  REDIS_URL: process.env.REDIS_URL || 'redis://localhost:6379',
-};
+const envSchema = z.object({
+  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+  PORT: z.string().default('5000'),
+  DATABASE_URL: z.string().min(1, 'DATABASE_URL is required (Neon pooled connection string)'),
+  DIRECT_URL: z.string().min(1, 'DIRECT_URL is required (Neon direct connection string)'),
+  JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
+  FRONTEND_URL: z.string().optional(),
+  ML_API_URL: z.string().optional()
+});
 
-// Strict validation for required variables
-const requiredVariables = ['DATABASE_URL'];
+const result = envSchema.safeParse(process.env);
 
-for (const variable of requiredVariables) {
-  if (!env[variable]) {
-    console.error(`[Env] FATAL ERROR: ${variable} is not defined in .env`);
-    process.exit(1);
-  }
+if (!result.success) {
+  console.error('❌ Invalid or missing environment variables:');
+  console.error(result.error.flatten().fieldErrors);
+  // Fail fast and loud at boot rather than limping along and hitting a
+  // confusing crash mid-request the first time a missing var is touched.
+  process.exit(1);
 }
 
-module.exports = env;
+module.exports = result.data;
