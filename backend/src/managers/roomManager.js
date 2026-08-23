@@ -2,6 +2,7 @@
 const crypto = require('crypto');
 const GameEngine = require('../gameEngine/gameEngine');
 const seatManager = require('./seatManager');
+const persistenceService = require('../services/persistenceService');
 
 class RoomManager {
   constructor() {
@@ -18,14 +19,16 @@ class RoomManager {
   /**
    * Creates a new multiplayer table with a fixed number of physical seats.
    *
-   * FIX: settings are no longer trusted blindly. maxPlayers is clamped to
-   * the project's stated 2–10 range (a client sending 0 or a negative
-   * number would otherwise crash seatManager's `new Array(n)` call), and
-   * bigBlind is floored at a sane minimum.
+   * FIX: now async — it also creates the backing DB `Room` row (see
+   * persistenceService.createRoomRecord) so that later Game/Hand writes
+   * have a real `Room.id` to satisfy the Game.roomId foreign key. The
+   * in-memory `room.id` stays the human-facing 6-char join code; the
+   * real DB uuid is cached as `room.dbId`.
    */
-  createRoom(hostId, settings = {}) {
+  async createRoom(hostId, settings = {}) {
     const maxPlayers = Math.min(10, Math.max(2, Number(settings.maxPlayers) || 6));
     const bigBlind = Math.max(2, Number(settings.bigBlind) || 20);
+    const startingChips = Number(settings.startingChips) || 1000;
 
     let roomId;
     do {
@@ -34,18 +37,27 @@ class RoomManager {
 
     const newRoom = {
       id: roomId,
+      dbId: null, // set below once the DB write resolves
       hostId,
-      settings: { ...settings, maxPlayers, bigBlind },
-      seats: seatManager.initializeSeats(maxPlayers), // Fixed-length array of nulls
+      settings: { ...settings, maxPlayers, bigBlind, startingChips },
+      seats: seatManager.initializeSeats(maxPlayers),
       game: null,
       status: 'WAITING',
-      // Tracks humans who are currently disconnected but still seated —
-      // used by gameFlowManager to auto-fold them on their turn instead
-      // of stalling the table.
       disconnectedPlayerIds: new Set()
     };
 
     this.rooms.set(roomId, newRoom);
+
+    // Persistence is best-effort and must never block room creation — if
+    // it fails, the room still works entirely in-memory, it just won't
+    // have hand history/stats written for it (persistenceService no-ops
+    // safely when dbId is null).
+    newRoom.dbId = await persistenceService.createRoomRecord({
+      code: roomId,
+      hostId,
+      settings: newRoom.settings
+    });
+
     return newRoom;
   }
 
@@ -95,6 +107,7 @@ class RoomManager {
 
     // If the room is now empty, destroy it to prevent memory leaks
     if (remainingPlayers.length === 0) {
+      if (room.game) persistenceService.markGameEnded(room); // fire-and-forget, never blocks cleanup
       this.rooms.delete(roomId);
       return { destroyed: true };
     }
@@ -105,6 +118,7 @@ class RoomManager {
     // of leaving an orphaned bot-only table running.
     const hasRemainingHuman = remainingPlayers.some(p => !p.isBot);
     if (!hasRemainingHuman) {
+      if (room.game) persistenceService.markGameEnded(room);
       this.rooms.delete(roomId);
       return { destroyed: true };
     }

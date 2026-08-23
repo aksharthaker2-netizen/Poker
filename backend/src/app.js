@@ -1,39 +1,25 @@
 // src/app.js
 const express = require('express');
 const cors = require('cors');
-const helmet = require('helmet');
+const env = require('./config/env');
+const routes = require('./routes');
+const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 
 const app = express();
 
-// --- Security & Utility Middleware ---
-app.use(helmet()); // Sets secure HTTP headers
-app.use(cors({
-  origin: process.env.CLIENT_URL || '*', // Allow frontend to connect
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  credentials: true,
-}));
-app.use(express.json()); // Parse incoming JSON payloads
-app.use(express.urlencoded({ extended: true }));
+app.use(
+  cors({
+    origin: env.FRONTEND_URL || '*', // set FRONTEND_URL explicitly in production
+    credentials: true
+  })
+);
+app.use(express.json());
 
-// --- API Routes ---
-// We will mount routes here later (e.g., app.use('/api/auth', authRoutes))
+app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
-// --- Health Check Endpoint ---
-app.get('/api/health', (req, res) => {
-  res.status(200).json({ 
-    status: 'success', 
-    message: 'PokerAI Backend is operational',
-    timestamp: new Date().toISOString()
-  });
-});
+app.use('/api', routes);
 
-// --- Global Error Handler ---
-app.use((err, req, res, next) => {
-  console.error(`[Error]: ${err.message}`);
-  res.status(err.status || 500).json({
-    status: 'error',
-    message: process.env.NODE_ENV === 'development' ? err.message : 'Internal Server Error'
-  });
-});
+app.use(notFoundHandler);
+app.use(errorHandler);
 
 module.exports = app;
