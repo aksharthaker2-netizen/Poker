@@ -41,8 +41,15 @@ export default function Profile() {
   }
 
   const stats = profile.stats || {};
+  // NOTE: using hands, not games — handsPlayed/handsWon are what
+  // persistenceService.js actually updates today; gamesPlayed/gamesWon
+  // exist on the schema but nothing increments them yet (a "game" here
+  // spans many hands and doesn't have a clean win/loss condition without
+  // more design — e.g. "left with more chips than you started" — so it's
+  // left for later rather than faked).
   const winRate =
-    stats.gamesPlayed > 0 ? Math.round((stats.gamesWon / stats.gamesPlayed) * 100) : 0;
+    stats.handsPlayed > 0 ? Math.round((stats.handsWon / stats.handsPlayed) * 100) : 0;
+  const achievements = profile.userAchievements || [];
 
   return (
     <div className="min-h-screen bg-[#0B0F10] px-4 py-10 text-[#EDEAE3]">
@@ -80,6 +87,27 @@ export default function Profile() {
             </span>
           </p>
         )}
+
+        <div className="rounded-lg border border-[#22302B] bg-[#0F1513] p-4">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[#8B9A94]">
+            Achievements ({achievements.length})
+          </h2>
+          {achievements.length === 0 ? (
+            <p className="text-sm text-[#5A6B64]">None yet — play some hands to unlock these.</p>
+          ) : (
+            <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {achievements.map((a) => (
+                <li
+                  key={a.achievement.key}
+                  className="rounded border border-[#D4AF37]/30 bg-[#D4AF37]/5 px-3 py-2"
+                >
+                  <p className="text-sm font-medium text-[#D4AF37]">{a.achievement.title}</p>
+                  <p className="text-xs text-[#8B9A94]">{a.achievement.description}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
     </div>
   );
