@@ -26,6 +26,7 @@ for i in range(NUM_HANDS):
         hero_folds += 1
 
 print(f"predict_postflop_action was called {postflop_call_count[0]} times out of {NUM_HANDS} hands")
+print(f"Raise-facing-bet downgraded to call: {predictor._raise_downgrade_count[0]} times")
 bb_per_100 = (hero_total_profit / BIG_BLIND) / NUM_HANDS * 100
 print(f"Hands played: {NUM_HANDS}")
 print(f"Hero total profit: {hero_total_profit} chips")

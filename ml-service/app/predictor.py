@@ -34,6 +34,8 @@ _postflop_model = joblib.load(MODEL_DIR / "postflop_xgboost_model.pkl")
 _postflop_label_encoder = joblib.load(MODEL_DIR / "postflop_label_encoder.pkl")
 
 
+_raise_downgrade_count = [0]
+
 def predict_postflop_action(hole_cards, community_cards, pot_size, to_call, min_raise,
                              num_prior_bets, is_hero_aggressor, street, hero_is_ip):
     strength = features.hand_strength(hole_cards, community_cards)
@@ -64,6 +66,9 @@ def predict_postflop_action(hole_cards, community_cards, pot_size, to_call, min_
 
     if action == "fold" and to_call <= 0:
         action = "check"
+    if action == "raise" and to_call > 0:
+        _raise_downgrade_count[0] += 1
+        action = "call"
 
     if action == "raise":
         return "raise", min_raise
