@@ -1,5 +1,6 @@
 // src/services/persistenceService.js
 const prisma = require('../config/db');
+const achievementService = require('./achievementService');
 
 /**
  * Creates the DB Room row backing an in-memory room. Returns its real
@@ -136,31 +137,70 @@ async function persistCompletedHand(room, showdownResult) {
       }
     });
 
-    // Bump lightweight stats for every human who played this hand.
-    // (Bots have no User row, so skip anything without a real userId.)
+    // Bump stats for every human who played this hand — net win/loss,
+    // streaks, a small bounded rating nudge, and achievement checks.
     const humanSeats = room.seats.filter((s) => s && !s.isBot);
     const winnerIds = new Set((showdownResult.results || []).flatMap((p) => p.winners.map((w) => w.playerId)));
+    const botCount = room.seats.filter((s) => s && s.isBot).length;
 
     await Promise.all(
       humanSeats.map(async (seat) => {
         const won = winnerIds.has(seat.id);
-        const payout = won
-          ? showdownResult.results.find((p) => p.winners.some((w) => w.playerId === seat.id))?.payout || 0
-          : 0;
 
-        await prisma.playerStats.upsert({
+        // True net change for the hand: final chip count minus what they
+        // had before blinds were posted. This is what actually happened
+        // to their stack — more accurate than just "payout if they won",
+        // since it also captures what a losing player put into the pot.
+        const chipsBefore = room.game.chipsAtHandStart?.get(seat.id) ?? seat.chips;
+        const chipsAfter = room.game.players.find((p) => p.id === seat.id)?.chips ?? seat.chips;
+        const netChange = chipsAfter - chipsBefore;
+
+        // Streaks need the PREVIOUS value to compute correctly (increment
+        // vs. reset-to-1), so read-then-write instead of an atomic
+        // increment for just this field.
+        const existing = await prisma.playerStats.findUnique({ where: { userId: seat.id } });
+        const prevStreak = existing?.currentStreak ?? 0;
+        const newStreak = won ? (prevStreak >= 0 ? prevStreak + 1 : 1) : (prevStreak <= 0 ? prevStreak - 1 : -1);
+        const newBestStreak = Math.max(existing?.bestStreak ?? 0, newStreak);
+
+        const updatedStats = await prisma.playerStats.upsert({
           where: { userId: seat.id },
           create: {
             userId: seat.id,
             handsPlayed: 1,
             handsWon: won ? 1 : 0,
-            totalChipsWon: payout
+            totalChipsWon: netChange > 0 ? netChange : 0,
+            totalChipsLost: netChange < 0 ? -netChange : 0,
+            currentStreak: newStreak,
+            bestStreak: Math.max(newStreak, 0)
           },
           update: {
             handsPlayed: { increment: 1 },
             handsWon: won ? { increment: 1 } : undefined,
-            totalChipsWon: won ? { increment: payout } : undefined
+            totalChipsWon: netChange > 0 ? { increment: netChange } : undefined,
+            totalChipsLost: netChange < 0 ? { increment: -netChange } : undefined,
+            currentStreak: newStreak,
+            bestStreak: newBestStreak
           }
+        });
+
+        // Small, bounded rating nudge tied to real chip results. This is
+        // deliberately simple (not a rigorous poker rating system, which
+        // would need something like all-in-adjusted EV) — just enough to
+        // make the leaderboard move in response to actual outcomes.
+        const ratingDelta = Math.max(-20, Math.min(20, Math.round(netChange / 20)));
+        if (ratingDelta !== 0) {
+          await prisma.user.update({
+            where: { id: seat.id },
+            data: { rating: { increment: ratingDelta } }
+          });
+        }
+
+        await achievementService.checkHandAchievements({
+          userId: seat.id,
+          won,
+          stats: updatedStats,
+          botCount
         });
       })
     );

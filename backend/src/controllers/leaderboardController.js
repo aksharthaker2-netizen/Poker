@@ -2,26 +2,43 @@
 const prisma = require('../config/db');
 
 /**
- * NOTE: this returns a live rating-ordered listing, which covers the
- * GLOBAL leaderboard correctly. WEEKLY/MONTHLY leaderboards (per the
- * original design) need periodic LeaderboardEntry snapshots written by a
- * scheduled job (jobs/recalculateLeaderboard.js) — not implemented yet.
- * For now, every period returns the same live-rating view; swap this to
- * query LeaderboardEntry once that job exists.
+ * GLOBAL is always a live query (no staleness). WEEKLY/MONTHLY read from
+ * the LeaderboardEntry snapshots jobs/recalculateLeaderboard.js maintains
+ * hourly — see that file for the caveat on what "weekly/monthly" actually
+ * measures.
  */
 async function getGlobal(req, res) {
   try {
+    const period = (req.query.period || 'GLOBAL').toUpperCase();
     const limit = Math.min(100, Number(req.query.limit) || 50);
 
-    const topUsers = await prisma.user.findMany({
-      where: { isBanned: false },
-      orderBy: { rating: 'desc' },
+    if (period === 'GLOBAL') {
+      const topUsers = await prisma.user.findMany({
+        where: { isBanned: false },
+        orderBy: { rating: 'desc' },
+        take: limit,
+        select: { id: true, username: true, rating: true, avatarUrl: true }
+      });
+      const leaderboard = topUsers.map((u, index) => ({ rank: index + 1, ...u }));
+      return res.json({ period, leaderboard });
+    }
+
+    const entries = await prisma.leaderboardEntry.findMany({
+      where: { period },
+      orderBy: { rank: 'asc' },
       take: limit,
-      select: { id: true, username: true, rating: true, avatarUrl: true }
+      include: { user: { select: { username: true, avatarUrl: true } } }
     });
 
-    const leaderboard = topUsers.map((u, index) => ({ rank: index + 1, ...u }));
-    return res.json({ period: req.query.period || 'GLOBAL', leaderboard });
+    const leaderboard = entries.map((e) => ({
+      rank: e.rank,
+      id: e.userId,
+      username: e.user.username,
+      avatarUrl: e.user.avatarUrl,
+      rating: e.rating
+    }));
+
+    return res.json({ period, leaderboard });
   } catch (error) {
     console.error('[Leaderboard] getGlobal error:', error.message);
     return res.status(500).json({ error: 'Failed to load leaderboard' });

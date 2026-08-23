@@ -59,6 +59,12 @@ class GameEngine {
     this.actionSequence = 0;
     this.lastAction = null;
 
+    // Snapshot each player's chip count BEFORE blinds are posted, so
+    // persistenceService can compute true net win/loss per hand later
+    // (final chips minus this snapshot) — needed for rating adjustments
+    // and totalChipsLost tracking, neither of which existed before.
+    this.chipsAtHandStart = new Map(this.players.map(p => [p.id, p.chips]));
+
     this.deck = shuffleDeck(createDeck());
     this.communityCards = [];
     this.state = GAME_STATES.PRE_FLOP;

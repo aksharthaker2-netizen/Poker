@@ -1,56 +1,26 @@
 // src/server.js
 require('dotenv').config();
+
 const http = require('http');
+const env = require('./config/env'); // validates env vars — must run before anything else touches process.env
 const app = require('./app');
-const env = require('./config/env');
-const prisma = require('./config/db');
-const redisClient = require('./config/redis');
+const { initializeSocket } = require('./socket');
+const { startCleanupJob } = require('./jobs/cleanupStaleRooms');
+const { startLeaderboardJob } = require('./jobs/recalculateLeaderboard');
 
-// Import the new modular socket orchestrator
-const { initializeSocket } = require('./socket/index');
+const httpServer = http.createServer(app);
 
-const server = http.createServer(app);
+initializeSocket(httpServer);
+startCleanupJob();
+startLeaderboardJob();
 
-// Initialize Socket.io and attach all domain handlers
-initializeSocket(server);
+httpServer.listen(env.PORT, () => {
+  console.log(`[Server] PokerAI backend listening on port ${env.PORT} (${env.NODE_ENV})`);
+});
 
-// Graceful Shutdown
-const shutdown = async () => {
-  console.log('\n[Server] Shutting down gracefully...');
-  await prisma.$disconnect();
-  // if (redisClient.isOpen) await redisClient.quit();
-  server.close(() => {
-    console.log('[Server] HTTP and Socket server closed.');
-    process.exit(0);
-  });
-};
-
-process.on('SIGINT', shutdown);
-process.on('SIGTERM', shutdown);
-
-// Catch unhandled promise rejections to prevent silent corruption
+// Don't let one bad unhandled rejection silently corrupt state — log it
+// loudly. In production, consider a process manager that restarts the
+// process on this rather than continuing in a possibly-inconsistent state.
 process.on('unhandledRejection', (reason) => {
   console.error('[Server] Unhandled promise rejection:', reason);
 });
-
-// Boot sequence
-const startServer = async () => {
-  try {
-    // 1. Connect to PostgreSQL
-    await prisma.$connect();
-    console.log('[DB] Successfully connected to PostgreSQL');
-
-    // 2. Connect to Redis (Currently bypassed for local development)
-    // await redisClient.connect();
-
-    // 3. Start Server
-    server.listen(env.PORT, () => {
-      console.log(`[Server] PokerAI running on http://localhost:${env.PORT} in ${env.NODE_ENV} mode`);
-    });
-  } catch (error) {
-    console.error(`[Server] Boot failed: ${error.message}`);
-    process.exit(1);
-  }
-};
-
-startServer();
