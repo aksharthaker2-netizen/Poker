@@ -3,18 +3,22 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { leaderboardApi } from '../services/api';
 
+const PERIODS = ['GLOBAL', 'WEEKLY', 'MONTHLY'];
+
 export default function Leaderboard() {
   const navigate = useNavigate();
   const myUserId = localStorage.getItem('userId');
+  const [period, setPeriod] = useState('GLOBAL');
   const [entries, setEntries] = useState([]);
   const [error, setError] = useState(null);
 
   useEffect(() => {
+    setError(null);
     leaderboardApi
-      .getGlobal()
+      .getGlobal(period)
       .then(({ data }) => setEntries(data.leaderboard))
       .catch((err) => setError(err.response?.data?.error || 'Failed to load leaderboard'));
-  }, []);
+  }, [period]);
 
   return (
     <div className="min-h-screen bg-[#0B0F10] px-4 py-10 text-[#EDEAE3]">
@@ -29,7 +33,27 @@ export default function Leaderboard() {
           </button>
         </div>
 
+        <div className="flex gap-2">
+          {PERIODS.map((p) => (
+            <button
+              key={p}
+              onClick={() => setPeriod(p)}
+              className={`rounded border px-3 py-1.5 text-sm capitalize transition ${
+                period === p
+                  ? 'border-[#D4AF37] bg-[#D4AF37]/10 text-[#D4AF37]'
+                  : 'border-[#22302B] text-[#8B9A94] hover:border-[#D4AF37]'
+              }`}
+            >
+              {p.toLowerCase()}
+            </button>
+          ))}
+        </div>
+
         {error && <p className="text-sm text-[#B23A2E]">{error}</p>}
+
+        {entries.length === 0 && !error && (
+          <p className="text-sm text-[#5A6B64]">No ranked players for this period yet.</p>
+        )}
 
         <ol className="flex flex-col overflow-hidden rounded-lg border border-[#22302B]">
           {entries.map((entry) => (

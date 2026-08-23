@@ -15,7 +15,14 @@ async function getProfile(req, res) {
         rating: true,
         chipsBalance: true,
         createdAt: true,
-        stats: true
+        stats: true,
+        userAchievements: {
+          select: {
+            unlockedAt: true,
+            achievement: { select: { key: true, title: true, description: true, iconUrl: true } }
+          },
+          orderBy: { unlockedAt: 'desc' }
+        }
       }
     });
 

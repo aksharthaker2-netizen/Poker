@@ -95,11 +95,23 @@ async function broadcastAndCheckBot(io, roomId, actionResult) {
 
   io.to(roomId).emit('GAME_STATE_UPDATED', buildPublicPayload(room, actionResult));
 
+  // Persist the action that just happened, if any. `game.lastAction` is
+  // set by GameEngine.handlePlayerAction() right before it returns, and
+  // is null for the synthetic "hand just started" call (nothing to log
+  // yet) — so this only fires for real fold/check/call/bet/raise/all-in
+  // actions, exactly once each, human or bot.
+  if (room.game.lastAction) {
+    const actionToLog = room.game.lastAction;
+    room.game.lastAction = null; // consume — prevents double-logging if this function is ever re-entered
+    persistenceService.persistHandAction(room, actionToLog); // fire-and-forget, never blocks the broadcast
+  }
+
   if (actionResult.state === 'SHOWDOWN') {
     // Fire-and-forget: persistence must never delay the broadcast or
     // block the next hand from starting. Failures are logged inside
     // persistenceService and never thrown back up to here.
     persistenceService.persistCompletedHand(room, actionResult);
+    scheduleNextHand(io, roomId);
   }
 
   if (actionResult.state === 'WAITING' || actionResult.state === 'SHOWDOWN') {
@@ -135,6 +147,48 @@ async function broadcastAndCheckBot(io, roomId, actionResult) {
 }
 
 /**
+ * How long to pause after a showdown before automatically dealing the
+ * next hand — long enough for players to see the results, short enough
+ * to keep the table moving without anyone having to click anything.
+ */
+const NEXT_HAND_DELAY_MS = 6000;
+
+/**
+ * Auto-continues the table after a showdown. Without this, nothing ever
+ * calls GameEngine.startHand() again after the very first hand — the
+ * table would sit at WAITING forever. If fewer than 2 players still have
+ * chips, the game ends and the room drops back to its lobby/waiting state
+ * instead.
+ */
+function scheduleNextHand(io, roomId) {
+  setTimeout(async () => {
+    const room = roomManager.getRoom(roomId);
+    if (!room || !room.game || room.status !== 'PLAYING') return;
+
+    const playersWithChips = room.game.players.filter((p) => p.chips > 0);
+    if (playersWithChips.length < 2) {
+      persistenceService.markGameEnded(room); // fire-and-forget
+      room.status = 'WAITING';
+      io.to(roomId).emit('GAME_ENDED', { reason: 'Not enough players with chips remaining' });
+      io.to(roomId).emit('ROOM_UPDATED', { room });
+      return;
+    }
+
+    try {
+      const initialState = room.game.startHand();
+      dealPrivateHands(io, room);
+      await broadcastAndCheckBot(io, roomId, {
+        state: initialState.state,
+        nextPlayerId: initialState.turnData.currentActorId,
+        potSize: initialState.potSize
+      });
+    } catch (error) {
+      console.error('[GameFlow] Failed to start next hand:', error.message);
+    }
+  }, NEXT_HAND_DELAY_MS);
+}
+
+/**
  * Called immediately on socket disconnect. If it happens to already be
  * the disconnected player's turn, fold them right away instead of
  * leaving the table stalled until someone notices.
@@ -159,5 +213,6 @@ module.exports = {
   dealPrivateHands,
   buildPublicPayload,
   broadcastAndCheckBot,
-  forceFoldIfCurrentActor
+  forceFoldIfCurrentActor,
+  scheduleNextHand
 };

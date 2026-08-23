@@ -43,7 +43,8 @@ class RoomManager {
       seats: seatManager.initializeSeats(maxPlayers),
       game: null,
       status: 'WAITING',
-      disconnectedPlayerIds: new Set()
+      disconnectedPlayerIds: new Set(),
+      _createdAtMs: Date.now() // used by jobs/cleanupStaleRooms.js to prune abandoned rooms
     };
 
     this.rooms.set(roomId, newRoom);

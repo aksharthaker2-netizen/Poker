@@ -218,7 +218,6 @@ model RoomSeat {
 
   room          Room         @relation(fields: [roomId], references: [id], onDelete: Cascade)
   user          User?        @relation(fields: [userId], references: [id])
-  handActions   HandAction[]
 
   @@unique([roomId, seatNumber])
   @@index([roomId])
@@ -275,15 +274,30 @@ model Hand {
 model HandAction {
   id              String     @id @default(uuid())
   handId          String
+
+  // Denormalized, NOT a foreign key — same reasoning as Hand.winnerSeatId.
+  // Seats live only in seatManager.js's in-memory arrays and are never
+  // persisted to `room_seats`, so a hard relation here could never
+  // actually resolve. This is just the in-memory player id string
+  // (a real User.id for humans, "bot_XXXX" for bots) — enough to display
+  // "who acted" without requiring seat persistence.
   seatId          String
-  userId          String?    // denormalized for fast "my history" queries; null for bot seats
+
+  userId          String?    // real FK — null for bot actions, set for humans (drives stats/coaching)
 
   action          ActionType
   amount          Int?
   stage           HandStage
   sequenceInHand  Int        // order of action within the hand
 
-  // Filled in later by the AI Poker Coach / review service
+  // NOTE: the community-card board at the time of THIS action isn't
+  // stored here — Hold'em reveals cards cumulatively in a fixed order, so
+  // it's always reconstructible from Hand.board sliced by `stage`
+  // (PRE_FLOP: [], FLOP: board[0:3], TURN: board[0:4], RIVER: board[0:5]).
+  // Storing it per-row would just be redundant.
+
+  // Filled in later by the AI Poker Coach / review service (not wired up
+  // yet — see reviewService.js)
   decisionScore   Int?       // 0–100
   aiRecommended   ActionType?
   aiExplanation   String?
@@ -291,7 +305,6 @@ model HandAction {
   createdAt       DateTime   @default(now())
 
   hand            Hand       @relation(fields: [handId], references: [id], onDelete: Cascade)
-  seat            RoomSeat   @relation(fields: [seatId], references: [id], onDelete: Cascade)
   user            User?      @relation(fields: [userId], references: [id])
 
   @@index([handId])

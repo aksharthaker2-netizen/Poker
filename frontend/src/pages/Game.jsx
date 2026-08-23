@@ -1,6 +1,6 @@
 // src/pages/Game.jsx
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import PokerTable from '../components/table/PokerTable';
 import { useSocket } from '../hooks/useSocket';
 import { emitWithAck } from '../services/socket';
@@ -9,6 +9,7 @@ import { useGameStore } from '../store/gameStore';
 
 export default function Game() {
   const { roomId } = useParams();
+  const navigate = useNavigate();
   const socket = useSocket();
   const userId = localStorage.getItem('userId');
 
@@ -29,6 +30,7 @@ export default function Game() {
   } = useGameStore();
 
   const [actionError, setActionError] = useState(null);
+  const [gameEndedReason, setGameEndedReason] = useState(null);
 
   useEffect(() => {
     if (!socket) return;
@@ -38,13 +40,19 @@ export default function Game() {
       setActionError(null);
       applyGameStateUpdate(payload);
     };
+    // The table auto-deals the next hand ~6s after a showdown as long as
+    // 2+ players still have chips (see gameFlowManager.scheduleNextHand).
+    // This only fires when it genuinely can't continue.
+    const onGameEnded = ({ reason }) => setGameEndedReason(reason);
 
     socket.on('YOUR_HAND', onYourHand);
     socket.on('GAME_STATE_UPDATED', onGameStateUpdated);
+    socket.on('GAME_ENDED', onGameEnded);
 
     return () => {
       socket.off('YOUR_HAND', onYourHand);
       socket.off('GAME_STATE_UPDATED', onGameStateUpdated);
+      socket.off('GAME_ENDED', onGameEnded);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket]);
@@ -91,8 +99,21 @@ export default function Game() {
               Pot {i + 1}: {pot.winners.map((w) => w.playerId).join(', ')} won {pot.payout}
             </p>
           ))}
+          <p className="mt-2 text-xs text-[#5A6B64]">Next hand starting soon…</p>
+        </div>
+      )}
+
+      {gameEndedReason && (
+        <div className="mx-auto mt-6 flex max-w-md flex-col items-center gap-3 rounded-lg border border-[#22302B] bg-[#0F1513] p-4 text-center">
+          <p className="text-sm text-[#EDEAE3]">{gameEndedReason}</p>
+          <button
+            onClick={() => navigate(`/room/${roomId}`)}
+            className="rounded bg-[#D4AF37] px-4 py-2 text-sm font-medium text-[#0B0F10] hover:brightness-110"
+          >
+            Back to waiting room
+          </button>
         </div>
       )}
     </div>
   );
-}   
+}
