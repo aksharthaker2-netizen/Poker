@@ -25,8 +25,8 @@ def predict_preflop_action(hand_strength, num_bets, pot_size, num_players, posit
     return action
 
 def predict_headsup_opening_action(hand_strength, min_raise):
-    if hand_strength < 0.3:
-        return "call", None
+    if hand_strength < 0.26:
+        return "fold", None
     else:
         return "raise", min_raise
 

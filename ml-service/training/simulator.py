@@ -214,3 +214,52 @@ def play_hand_and_log_postflop(villain_decide_fn=xgboost_bot_decide, explore_rat
     for entry in logs:
         entry["hero_profit"] = hero_profit
     return logs
+
+def play_hand_full_log(opponent_pool, explore_rate=0.7, big_blind=10):
+    logs = []
+    villain_fn = random.choice(opponent_pool)
+
+    def logging_hero_fn(hole_cards, community_cards, pot_size, to_call, min_raise, num_bets, position, big_blind=big_blind):
+        pot_size_bb = pot_size / big_blind
+        to_call_bb = to_call / big_blind
+
+        if not community_cards:
+            strength = features.hand_strength(hole_cards, [])
+            situation = {
+                "phase": "preflop",
+                "hand_strength": strength,
+                "num_bets": num_bets,
+                "pot_size_bb": pot_size_bb,
+                "to_call_bb": to_call_bb,
+            }
+        else:
+            strength = features.hand_strength(hole_cards, community_cards)
+            is_paired, flush_possible = features.board_texture(community_cards)
+            straight_poss = features.straight_possible(community_cards)
+            street_map = {3: "Flop", 4: "Turn", 5: "River"}
+            situation = {
+                "phase": "postflop",
+                "hand_strength": strength,
+                "num_bets": num_bets,
+                "pot_size_bb": pot_size_bb,
+                "to_call_bb": to_call_bb,
+                "street": street_map.get(len(community_cards), "Flop"),
+                "board_paired": is_paired,
+                "board_flush_possible": flush_possible,
+                "board_straight_possible": straight_poss,
+            }
+
+        if random.random() < explore_rate:
+            action = random.choice(["fold", "call", "raise"])
+        else:
+            action, _ = xgboost_bot_decide(hole_cards, community_cards, pot_size, to_call, min_raise, num_bets, position, big_blind)
+
+        situation["action"] = action
+        logs.append(situation)
+        raise_amount = min_raise if action == "raise" else None
+        return action, raise_amount
+
+    hero_profit, villain_profit, outcome = play_one_hand(logging_hero_fn, villain_fn, big_blind=big_blind)
+    for entry in logs:
+        entry["hero_profit"] = hero_profit
+    return logs
