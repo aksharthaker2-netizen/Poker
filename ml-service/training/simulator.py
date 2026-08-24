@@ -28,11 +28,6 @@ import predictor
 
 def xgboost_bot_decide(hole_cards, community_cards, pot_size, to_call, min_raise, num_bets, position, big_blind=10):
     if not community_cards:
-        is_fresh_headsup_open = (to_call == 0 and num_bets <= 1)
-        if is_fresh_headsup_open:
-            strength = features.hand_strength(hole_cards, [])
-            return predictor.predict_headsup_opening_action(strength, min_raise)
-
         pot_size_bb = pot_size / big_blind
         action = predictor.predict_preflop_action(
             hand_strength=features.hand_strength(hole_cards, []),

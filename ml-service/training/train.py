@@ -7,16 +7,27 @@ from lightgbm import LGBMClassifier
 from catboost import CatBoostClassifier
 import joblib
 from pathlib import Path
+from pathlib import Path
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import LabelEncoder
 from xgboost import XGBClassifier
 from data_utils import load_postflop_split
+import pandas as pd
 
 TRAIN_URL = "https://huggingface.co/datasets/RZ412/PokerBench/resolve/main/preflop_60k_train_set_game_scenario_information.csv"
 TEST_URL = "https://huggingface.co/datasets/RZ412/PokerBench/resolve/main/preflop_1k_test_set_game_scenario_information.csv"
 
 X_train, y_train = load_preflop_split(TRAIN_URL, "preflop_60k_train.csv")
 X_test, y_test = load_preflop_split(TEST_URL, "preflop_1k_test.csv")
+acpc_df = pd.read_csv(Path(__file__).resolve().parent / "data" / "acpc_preflop_full.csv")
+X_acpc = acpc_df.drop(columns=["action_label"])
+y_acpc = acpc_df["action_label"]
+
+X_train = pd.concat([X_train, X_acpc], ignore_index=True)
+y_train = pd.concat([y_train, y_acpc], ignore_index=True)
+
+print(f"Combined training set: {len(X_train)} rows (PokerBench + ACPC heads-up)")
+print(y_train.value_counts())
 
 baseline_prediction = y_train.mode()[0]
 baseline_accuracy = (y_test == baseline_prediction).mean()

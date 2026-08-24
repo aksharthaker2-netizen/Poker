@@ -37,6 +37,7 @@ def extract_hand_records(hand):
     position_map = {first_actor: "SB", other_actor: "BB"}
 
     committed = {"p1": blinds[0], "p2": blinds[1]}
+    big_blind = blinds[1]
     pot = blinds[0] + blinds[1]
     num_bets = 1
     records = []
@@ -51,7 +52,7 @@ def extract_hand_records(hand):
         row = {
             "our_hand_strength": strength,
             "num_bets": num_bets,
-            "pot_size": pot,
+            "pot_size": pot / big_blind,
             "num_players": 2,
         }
         for pos in ALL_POSITIONS:
