@@ -56,6 +56,15 @@ POSTFLOP_TEST_URL = "https://huggingface.co/datasets/RZ412/PokerBench/resolve/ma
 
 X_train_pf, y_train_pf = load_postflop_split(POSTFLOP_TRAIN_URL, "postflop_500k_train.csv")
 X_test_pf, y_test_pf = load_postflop_split(POSTFLOP_TEST_URL, "postflop_10k_test.csv")
+acpc_pf_df = pd.read_csv(Path(__file__).resolve().parent / "data" / "acpc_postflop_full.csv")
+X_acpc_pf = acpc_pf_df.drop(columns=["action_label"])
+y_acpc_pf = acpc_pf_df["action_label"]
+
+X_train_pf = pd.concat([X_train_pf, X_acpc_pf], ignore_index=True)
+y_train_pf = pd.concat([y_train_pf, y_acpc_pf], ignore_index=True)
+
+print(f"Combined postflop training set: {len(X_train_pf)} rows (PokerBench + ACPC heads-up)")
+print(y_train_pf.value_counts())
 
 postflop_baseline = y_train_pf.mode()[0]
 print(f"\nPostflop baseline (always predict '{postflop_baseline}'): {(y_test_pf == postflop_baseline).mean():.2%}")

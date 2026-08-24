@@ -20,7 +20,7 @@ env/
 *.pt
 *.onnx
 *.pkl
-
+training/data/
 # =====================================
 # Environment Secrets (Crucial)
 # =====================================
