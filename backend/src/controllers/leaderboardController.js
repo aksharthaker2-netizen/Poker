@@ -1,11 +1,10 @@
 // src/controllers/leaderboardController.js
-const prisma = require('../config/db');
+const userRepository = require('../repositories/userRepository');
 
 /**
  * GLOBAL is always a live query (no staleness). WEEKLY/MONTHLY read from
  * the LeaderboardEntry snapshots jobs/recalculateLeaderboard.js maintains
- * hourly — see that file for the caveat on what "weekly/monthly" actually
- * measures.
+ * hourly — see that file for the caveat on what "weekly/monthly" measures.
  */
 async function getGlobal(req, res) {
   try {
@@ -13,23 +12,12 @@ async function getGlobal(req, res) {
     const limit = Math.min(100, Number(req.query.limit) || 50);
 
     if (period === 'GLOBAL') {
-      const topUsers = await prisma.user.findMany({
-        where: { isBanned: false },
-        orderBy: { rating: 'desc' },
-        take: limit,
-        select: { id: true, username: true, rating: true, avatarUrl: true }
-      });
+      const topUsers = await userRepository.findTopByRating(limit);
       const leaderboard = topUsers.map((u, index) => ({ rank: index + 1, ...u }));
       return res.json({ period, leaderboard });
     }
 
-    const entries = await prisma.leaderboardEntry.findMany({
-      where: { period },
-      orderBy: { rank: 'asc' },
-      take: limit,
-      include: { user: { select: { username: true, avatarUrl: true } } }
-    });
-
+    const entries = await userRepository.findLeaderboardSnapshot(period, limit);
     const leaderboard = entries.map((e) => ({
       rank: e.rank,
       id: e.userId,

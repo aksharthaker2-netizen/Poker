@@ -1,19 +1,12 @@
 // src/managers/roomManager.js
-const crypto = require('crypto');
 const GameEngine = require('../gameEngine/gameEngine');
 const seatManager = require('./seatManager');
 const persistenceService = require('../services/persistenceService');
+const { generateRoomCode } = require('../utils/roomCodeGenerator');
 
 class RoomManager {
   constructor() {
     this.rooms = new Map();
-  }
-
-  /**
-   * Generates a secure, readable 6-character uppercase alphanumeric code.
-   */
-  generateRoomCode() {
-    return crypto.randomBytes(3).toString('hex').toUpperCase();
   }
 
   /**
@@ -32,7 +25,7 @@ class RoomManager {
 
     let roomId;
     do {
-      roomId = this.generateRoomCode();
+      roomId = generateRoomCode();
     } while (this.rooms.has(roomId));
 
     const newRoom = {
@@ -153,8 +146,12 @@ class RoomManager {
 
   /**
    * Instantiates the GameEngine using the strict table-order of the seats.
+   *
+   * FIX: now async — also syncs the DB Room.status to 'ACTIVE' so
+   * roomController.getMyRooms (REST) isn't permanently stuck showing
+   * 'WAITING' for every room that has actually started playing.
    */
-  startGame(roomId) {
+  async startGame(roomId) {
     const room = this.rooms.get(roomId);
     if (!room) throw new Error('Room not found.');
 
@@ -169,6 +166,11 @@ class RoomManager {
     room.status = 'PLAYING';
 
     const initialGameState = room.game.startHand();
+
+    // Best-effort, non-blocking — the game has already started in-memory
+    // regardless of whether this DB write succeeds.
+    persistenceService.updateRoomStatus(room, 'ACTIVE');
+
     return { room, initialGameState };
   }
 

@@ -1,5 +1,6 @@
 // src/controllers/friendController.js
-const prisma = require('../config/db');
+const userRepository = require('../repositories/userRepository');
+const friendRepository = require('../repositories/friendRepository');
 const presenceManager = require('../managers/presenceManager');
 
 async function searchUsers(req, res) {
@@ -7,16 +8,7 @@ async function searchUsers(req, res) {
     const q = (req.query.q || '').trim();
     if (q.length < 2) return res.json({ users: [] });
 
-    const users = await prisma.user.findMany({
-      where: {
-        username: { contains: q, mode: 'insensitive' },
-        id: { not: req.userId },
-        isBanned: false
-      },
-      select: { id: true, username: true, avatarUrl: true, rating: true },
-      take: 20
-    });
-
+    const users = await userRepository.searchByUsername(q, req.userId);
     return res.json({ users });
   } catch (error) {
     console.error('[Friends] searchUsers error:', error.message);
@@ -27,41 +19,25 @@ async function searchUsers(req, res) {
 async function sendRequest(req, res) {
   try {
     const { targetUserId } = req.body;
-    if (!targetUserId) return res.status(400).json({ error: 'targetUserId is required' });
     if (targetUserId === req.userId) {
       return res.status(400).json({ error: "You can't add yourself" });
     }
 
-    const targetUser = await prisma.user.findUnique({ where: { id: targetUserId } });
+    const targetUser = await userRepository.findById(targetUserId);
     if (!targetUser) return res.status(404).json({ error: 'User not found' });
 
-    // A friendship row can exist in either direction — check both.
-    const existing = await prisma.friendship.findFirst({
-      where: {
-        OR: [
-          { requesterId: req.userId, addresseeId: targetUserId },
-          { requesterId: targetUserId, addresseeId: req.userId }
-        ]
-      }
-    });
+    const existing = await friendRepository.findRelationship(req.userId, targetUserId);
 
     if (existing) {
       if (existing.status === 'ACCEPTED') return res.status(409).json({ error: 'Already friends' });
       if (existing.status === 'PENDING') return res.status(409).json({ error: 'Request already pending' });
       if (existing.status === 'BLOCKED') return res.status(403).json({ error: 'Cannot send request' });
 
-      // Previously DECLINED — allow a fresh request by reusing the row.
-      const updated = await prisma.friendship.update({
-        where: { id: existing.id },
-        data: { requesterId: req.userId, addresseeId: targetUserId, status: 'PENDING' }
-      });
+      const updated = await friendRepository.reopen(existing.id, req.userId, targetUserId);
       return res.status(201).json({ friendship: updated });
     }
 
-    const friendship = await prisma.friendship.create({
-      data: { requesterId: req.userId, addresseeId: targetUserId, status: 'PENDING' }
-    });
-
+    const friendship = await friendRepository.create(req.userId, targetUserId);
     return res.status(201).json({ friendship });
   } catch (error) {
     console.error('[Friends] sendRequest error:', error.message);
@@ -70,8 +46,7 @@ async function sendRequest(req, res) {
 }
 
 async function respondToRequest(req, res, newStatus) {
-  const { friendshipId } = req.params;
-  const friendship = await prisma.friendship.findUnique({ where: { id: friendshipId } });
+  const friendship = await friendRepository.findById(req.params.friendshipId);
 
   if (!friendship) return res.status(404).json({ error: 'Request not found' });
   if (friendship.addresseeId !== req.userId) {
@@ -81,11 +56,7 @@ async function respondToRequest(req, res, newStatus) {
     return res.status(409).json({ error: 'Request is no longer pending' });
   }
 
-  const updated = await prisma.friendship.update({
-    where: { id: friendshipId },
-    data: { status: newStatus }
-  });
-
+  const updated = await friendRepository.updateStatus(req.params.friendshipId, newStatus);
   return res.json({ friendship: updated });
 }
 
@@ -109,15 +80,14 @@ async function declineRequest(req, res) {
 
 async function removeFriend(req, res) {
   try {
-    const { friendshipId } = req.params;
-    const friendship = await prisma.friendship.findUnique({ where: { id: friendshipId } });
+    const friendship = await friendRepository.findById(req.params.friendshipId);
 
     if (!friendship) return res.status(404).json({ error: 'Friendship not found' });
     if (friendship.requesterId !== req.userId && friendship.addresseeId !== req.userId) {
       return res.status(403).json({ error: 'Not your friendship to remove' });
     }
 
-    await prisma.friendship.delete({ where: { id: friendshipId } });
+    await friendRepository.remove(req.params.friendshipId);
     return res.json({ success: true });
   } catch (error) {
     console.error('[Friends] removeFriend error:', error.message);
@@ -127,20 +97,8 @@ async function removeFriend(req, res) {
 
 async function listFriends(req, res) {
   try {
-    const friendships = await prisma.friendship.findMany({
-      where: {
-        status: 'ACCEPTED',
-        OR: [{ requesterId: req.userId }, { addresseeId: req.userId }]
-      },
-      include: {
-        requester: { select: { id: true, username: true, avatarUrl: true, rating: true } },
-        addressee: { select: { id: true, username: true, avatarUrl: true, rating: true } }
-      }
-    });
+    const friendships = await friendRepository.listAccepted(req.userId);
 
-    // presenceManager is an in-process singleton shared with the socket
-    // layer — safe to read directly here since REST and Socket.io run in
-    // the same Node process.
     const friends = friendships.map((f) => {
       const friend = f.requesterId === req.userId ? f.addressee : f.requester;
       return {
@@ -159,11 +117,7 @@ async function listFriends(req, res) {
 
 async function listPendingRequests(req, res) {
   try {
-    const requests = await prisma.friendship.findMany({
-      where: { addresseeId: req.userId, status: 'PENDING' },
-      include: { requester: { select: { id: true, username: true, avatarUrl: true } } }
-    });
-
+    const requests = await friendRepository.listPendingForUser(req.userId);
     return res.json({ requests });
   } catch (error) {
     console.error('[Friends] listPendingRequests error:', error.message);
