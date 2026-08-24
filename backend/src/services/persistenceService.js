@@ -1,33 +1,28 @@
 // src/services/persistenceService.js
-const prisma = require('../config/db');
+const roomRepository = require('../repositories/roomRepository');
+const gameRepository = require('../repositories/gameRepository');
+const userRepository = require('../repositories/userRepository');
+const ratingService = require('./ratingService');
 const achievementService = require('./achievementService');
 
 /**
  * Creates the DB Room row backing an in-memory room. Returns its real
  * UUID (`Room.id`), which is DIFFERENT from the human-friendly 6-char
  * join code (`Room.code`, also `room.id` in the in-memory roomManager
- * object and the socket.io room name / URL param). Keep these straight:
- *   - in-memory `room.id`   -> socket.io room name, URL, DB `Room.code`
- *   - `room.dbId` (this fn) -> DB `Room.id`, used as the FK for Game.roomId
+ * object and the socket.io room name / URL param).
  */
 async function createRoomRecord({ code, hostId, settings }) {
   try {
-    const dbRoom = await prisma.room.create({
-      data: {
-        code,
-        hostId,
-        maxPlayers: settings.maxPlayers,
-        bigBlind: settings.bigBlind,
-        smallBlind: Math.floor(settings.bigBlind / 2),
-        startingChips: settings.startingChips || 1000,
-        status: 'WAITING'
-      }
+    const dbRoom = await roomRepository.create({
+      code,
+      hostId,
+      maxPlayers: settings.maxPlayers,
+      bigBlind: settings.bigBlind,
+      smallBlind: Math.floor(settings.bigBlind / 2),
+      startingChips: settings.startingChips || 1000
     });
     return dbRoom.id;
   } catch (error) {
-    // Persistence must never block gameplay — a room still works entirely
-    // in-memory even if this write fails (e.g. DB hiccup). Downstream
-    // hand/stat writes for this room will just no-op (see guards below).
     console.error('[Persistence] Failed to create Room record:', error.message);
     return null;
   }
@@ -43,9 +38,7 @@ async function ensureGameRecord(room) {
   if (room.game._dbGameId) return room.game._dbGameId;
 
   try {
-    const dbGame = await prisma.game.create({
-      data: { roomId: room.dbId, status: 'IN_PROGRESS' }
-    });
+    const dbGame = await gameRepository.create(room.dbId);
     room.game._dbGameId = dbGame.id;
     room.game._handCounter = 0;
     return dbGame.id;
@@ -57,11 +50,10 @@ async function ensureGameRecord(room) {
 
 /**
  * Lazily creates the Hand row for the CURRENT hand, on its first action —
- * not at showdown. HandAction rows need a real handId to attach to as
- * actions happen throughout the hand, well before it resolves.
- * `game._dbHandId` is reset to null in GameEngine.startHand() (new hand,
- * no row yet) and again after persistCompletedHand() finalizes it (so the
- * NEXT hand creates a fresh row).
+ * not at showdown. `game._dbHandId` is reset to null in
+ * GameEngine.startHand() (new hand, no row yet) and again after
+ * persistCompletedHand() finalizes it (so the NEXT hand creates a fresh
+ * row).
  */
 async function ensureHandRecord(room) {
   const dbGameId = await ensureGameRecord(room);
@@ -70,9 +62,7 @@ async function ensureHandRecord(room) {
 
   try {
     const handNumber = ++room.game._handCounter;
-    const dbHand = await prisma.hand.create({
-      data: { gameId: dbGameId, handNumber, stage: 'PRE_FLOP' }
-    });
+    const dbHand = await gameRepository.createHand({ gameId: dbGameId, handNumber });
     room.game._dbHandId = dbHand.id;
     return dbHand.id;
   } catch (error) {
@@ -83,9 +73,7 @@ async function ensureHandRecord(room) {
 
 /**
  * Persists a single fold/check/call/bet/raise/all-in as a HandAction row.
- * Called once per GameEngine.handlePlayerAction() call — for every
- * player, human or bot (bots just get userId: null; see HandAction.seatId's
- * schema comment for why that doesn't need a RoomSeat FK).
+ * Called once per GameEngine.handlePlayerAction() call — human or bot.
  */
 async function persistHandAction(room, lastAction) {
   const dbHandId = await ensureHandRecord(room);
@@ -95,16 +83,14 @@ async function persistHandAction(room, lastAction) {
     const seat = room.seats.find((s) => s && s.id === lastAction.playerId);
     const isHuman = seat && !seat.isBot;
 
-    await prisma.handAction.create({
-      data: {
-        handId: dbHandId,
-        seatId: lastAction.playerId,
-        userId: isHuman ? lastAction.playerId : null,
-        action: lastAction.action,
-        amount: lastAction.amount,
-        stage: lastAction.stage,
-        sequenceInHand: lastAction.sequenceInHand
-      }
+    await gameRepository.createHandAction({
+      handId: dbHandId,
+      seatId: lastAction.playerId,
+      userId: isHuman ? lastAction.playerId : null,
+      action: lastAction.action,
+      amount: lastAction.amount,
+      stage: lastAction.stage,
+      sequenceInHand: lastAction.sequenceInHand
     });
   } catch (error) {
     console.error('[Persistence] Failed to save hand action:', error.message);
@@ -112,9 +98,10 @@ async function persistHandAction(room, lastAction) {
 }
 
 /**
- * Finalizes the CURRENT hand's row (board/pot/winner) and bumps
- * PlayerStats for every human who played it. Then clears `_dbHandId` so
- * the next hand's first action creates a fresh Hand row.
+ * Finalizes the CURRENT hand's row (board/pot/winner), bumps PlayerStats
+ * (net win/loss, streaks), nudges rating, and checks achievements — for
+ * every human who played it. Then clears `_dbHandId` so the next hand's
+ * first action creates a fresh Hand row.
  */
 async function persistCompletedHand(room, showdownResult) {
   const dbHandId = room.game._dbHandId;
@@ -125,22 +112,18 @@ async function persistCompletedHand(room, showdownResult) {
     const topPot = showdownResult.results?.[0];
     const winner = topPot?.winners?.[0];
 
-    await prisma.hand.update({
-      where: { id: dbHandId },
-      data: {
-        stage: 'SHOWDOWN',
-        board: room.game.communityCards.map((c) => `${c.rank}${c.suit[0]}`),
-        potSize: totalPot,
-        winnerSeatId: winner?.playerId || null,
-        winningHand: winner?.handData?.name || null,
-        endedAt: new Date()
-      }
+    await gameRepository.finalizeHand(dbHandId, {
+      stage: 'SHOWDOWN',
+      board: room.game.communityCards.map((c) => `${c.rank}${c.suit[0]}`),
+      potSize: totalPot,
+      winnerSeatId: winner?.playerId || null,
+      winningHand: winner?.handData?.name || null
     });
 
-    // Bump stats for every human who played this hand — net win/loss,
-    // streaks, a small bounded rating nudge, and achievement checks.
     const humanSeats = room.seats.filter((s) => s && !s.isBot);
-    const winnerIds = new Set((showdownResult.results || []).flatMap((p) => p.winners.map((w) => w.playerId)));
+    const winnerIds = new Set(
+      (showdownResult.results || []).flatMap((p) => p.winners.map((w) => w.playerId))
+    );
     const botCount = room.seats.filter((s) => s && s.isBot).length;
 
     await Promise.all(
@@ -148,24 +131,23 @@ async function persistCompletedHand(room, showdownResult) {
         const won = winnerIds.has(seat.id);
 
         // True net change for the hand: final chip count minus what they
-        // had before blinds were posted. This is what actually happened
-        // to their stack — more accurate than just "payout if they won",
-        // since it also captures what a losing player put into the pot.
+        // had before blinds were posted.
         const chipsBefore = room.game.chipsAtHandStart?.get(seat.id) ?? seat.chips;
         const chipsAfter = room.game.players.find((p) => p.id === seat.id)?.chips ?? seat.chips;
         const netChange = chipsAfter - chipsBefore;
 
-        // Streaks need the PREVIOUS value to compute correctly (increment
-        // vs. reset-to-1), so read-then-write instead of an atomic
-        // increment for just this field.
-        const existing = await prisma.playerStats.findUnique({ where: { userId: seat.id } });
+        // Streaks need the previous value to compute correctly, so
+        // read-then-write instead of an atomic increment for this field.
+        const existing = await userRepository.findStats(seat.id);
         const prevStreak = existing?.currentStreak ?? 0;
-        const newStreak = won ? (prevStreak >= 0 ? prevStreak + 1 : 1) : (prevStreak <= 0 ? prevStreak - 1 : -1);
+        const newStreak = won
+          ? (prevStreak >= 0 ? prevStreak + 1 : 1)
+          : (prevStreak <= 0 ? prevStreak - 1 : -1);
         const newBestStreak = Math.max(existing?.bestStreak ?? 0, newStreak);
 
-        const updatedStats = await prisma.playerStats.upsert({
-          where: { userId: seat.id },
-          create: {
+        const updatedStats = await userRepository.upsertStats(
+          seat.id,
+          {
             userId: seat.id,
             handsPlayed: 1,
             handsWon: won ? 1 : 0,
@@ -174,7 +156,7 @@ async function persistCompletedHand(room, showdownResult) {
             currentStreak: newStreak,
             bestStreak: Math.max(newStreak, 0)
           },
-          update: {
+          {
             handsPlayed: { increment: 1 },
             handsWon: won ? { increment: 1 } : undefined,
             totalChipsWon: netChange > 0 ? { increment: netChange } : undefined,
@@ -182,18 +164,11 @@ async function persistCompletedHand(room, showdownResult) {
             currentStreak: newStreak,
             bestStreak: newBestStreak
           }
-        });
+        );
 
-        // Small, bounded rating nudge tied to real chip results. This is
-        // deliberately simple (not a rigorous poker rating system, which
-        // would need something like all-in-adjusted EV) — just enough to
-        // make the leaderboard move in response to actual outcomes.
-        const ratingDelta = Math.max(-20, Math.min(20, Math.round(netChange / 20)));
+        const ratingDelta = ratingService.calculateHandRatingDelta(netChange);
         if (ratingDelta !== 0) {
-          await prisma.user.update({
-            where: { id: seat.id },
-            data: { rating: { increment: ratingDelta } }
-          });
+          await userRepository.incrementRating(seat.id, ratingDelta);
         }
 
         await achievementService.checkHandAchievements({
@@ -208,52 +183,35 @@ async function persistCompletedHand(room, showdownResult) {
     console.error('[Persistence] Failed to finalize hand:', error.message);
   } finally {
     // Always clear, even on failure — better to lose one hand's row than
-    // have the next hand's actions silently attach to a stale/broken one.
+    // have the next hand's actions silently attach to a stale one.
     room.game._dbHandId = null;
   }
 }
 
 async function markGameEnded(room) {
   // Room status transitions to ENDED regardless of whether a DB Game
-  // record exists for it, so this check must be independent of
-  // room.game._dbGameId (that guard only applies to the Game update below).
+  // record exists for it, so this is independent of the guard below.
   await updateRoomStatus(room, 'ENDED');
 
   if (!room.game?._dbGameId) return;
   try {
-    await prisma.game.update({
-      where: { id: room.game._dbGameId },
-      data: { status: 'COMPLETED', endedAt: new Date() }
-    });
+    await gameRepository.updateStatus(room.game._dbGameId, 'COMPLETED');
   } catch (error) {
     console.error('[Persistence] Failed to close Game record:', error.message);
   }
 }
 
 /**
- * Syncs the DB Room row's status to match the in-memory room's lifecycle.
- * Best-effort and non-blocking, like every other write in this file — a
- * failure here must never affect gameplay, it just means this one read
- * endpoint (roomController.getMyRooms) shows a stale status until the
- * next successful sync.
- *
- * NOTE: in-memory `room.status` uses 'WAITING' | 'PLAYING' (seatManager/
- * roomManager's own vocabulary), which does NOT match the Prisma
- * RoomStatus enum ('WAITING' | 'ACTIVE' | 'ENDED' | 'CANCELLED') — callers
- * pass the already-translated DB enum value in explicitly rather than
- * this function guessing a mapping.
+ * Syncs the DB Room row's status to match the in-memory room's
+ * lifecycle. NOTE: in-memory `room.status` uses 'WAITING' | 'PLAYING'
+ * (roomManager's own vocabulary) which does NOT match the Prisma
+ * RoomStatus enum — callers pass the already-translated DB enum value in
+ * explicitly rather than this function guessing a mapping.
  */
 async function updateRoomStatus(room, dbStatus) {
   if (!room.dbId) return;
   try {
-    await prisma.room.update({
-      where: { id: room.dbId },
-      data: {
-        status: dbStatus,
-        ...(dbStatus === 'ACTIVE' ? { startedAt: new Date() } : {}),
-        ...(dbStatus === 'ENDED' ? { endedAt: new Date() } : {})
-      }
-    });
+    await roomRepository.updateStatus(room.dbId, dbStatus);
   } catch (error) {
     console.error('[Persistence] Failed to update Room status:', error.message);
   }

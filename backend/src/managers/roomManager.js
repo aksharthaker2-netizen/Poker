@@ -1,19 +1,12 @@
 // src/managers/roomManager.js
-const crypto = require('crypto');
 const GameEngine = require('../gameEngine/gameEngine');
 const seatManager = require('./seatManager');
 const persistenceService = require('../services/persistenceService');
+const { generateRoomCode } = require('../utils/roomCodeGenerator');
 
 class RoomManager {
   constructor() {
     this.rooms = new Map();
-  }
-
-  /**
-   * Generates a secure, readable 6-character uppercase alphanumeric code.
-   */
-  generateRoomCode() {
-    return crypto.randomBytes(3).toString('hex').toUpperCase();
   }
 
   /**
@@ -32,7 +25,7 @@ class RoomManager {
 
     let roomId;
     do {
-      roomId = this.generateRoomCode();
+      roomId = generateRoomCode();
     } while (this.rooms.has(roomId));
 
     const newRoom = {

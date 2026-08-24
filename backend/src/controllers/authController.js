@@ -1,6 +1,6 @@
 // src/controllers/authController.js
 const bcrypt = require('bcrypt');
-const prisma = require('../config/db');
+const userRepository = require('../repositories/userRepository');
 const tokenService = require('../services/tokenService');
 
 const BCRYPT_ROUNDS = 12;
@@ -13,22 +13,14 @@ async function register(req, res) {
   try {
     const { username, email, password } = req.body;
 
-    const existing = await prisma.user.findFirst({
-      where: { OR: [{ username }, { email }] }
-    });
+    const existing = await userRepository.findByUsernameOrEmail(username, email);
     if (existing) {
       return res.status(409).json({ error: 'Username or email already in use' });
     }
 
     const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
-
-    const user = await prisma.user.create({
-      data: { username, email, passwordHash }
-    });
-
-    // Every user needs a stats row for the leaderboard/profile pages to
-    // work without null-checking everywhere downstream.
-    await prisma.playerStats.create({ data: { userId: user.id } });
+    const user = await userRepository.create({ username, email, passwordHash });
+    await userRepository.createStatsRow(user.id);
 
     const accessToken = tokenService.signAccessToken(user);
     const refreshToken = await tokenService.issueRefreshToken(user.id, {
@@ -47,15 +39,10 @@ async function login(req, res) {
   try {
     const { email, password } = req.body;
 
-    const user = await prisma.user.findUnique({ where: { email } });
-
-    // Deliberately the SAME error whether the email doesn't exist or the
-    // password is wrong — distinguishing the two lets an attacker
-    // enumerate which emails have accounts.
+    const user = await userRepository.findByEmail(email);
     if (!user) {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
-
     if (user.isBanned) {
       return res.status(403).json({ error: 'This account has been suspended' });
     }
@@ -65,10 +52,7 @@ async function login(req, res) {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { lastSeenAt: new Date() }
-    });
+    await userRepository.updateLastSeen(user.id);
 
     const accessToken = tokenService.signAccessToken(user);
     const refreshToken = await tokenService.issueRefreshToken(user.id, {
@@ -92,7 +76,7 @@ async function refresh(req, res) {
       ipAddress: req.ip
     });
 
-    const user = await prisma.user.findUnique({ where: { id: userId } });
+    const user = await userRepository.findById(userId);
     if (!user || user.isBanned) {
       return res.status(401).json({ error: 'Invalid session' });
     }
