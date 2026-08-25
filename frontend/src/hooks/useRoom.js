@@ -94,5 +94,19 @@ export function useRoom(currentUserId) {
     [setError]
   );
 
-  return { room, isHost, error, createRoom, joinRoom, addBot, startGame, clearRoom };
+  const leaveRoom = useCallback(
+    async (roomId) => {
+      try {
+        await emitWithAck('LEAVE_ROOM', { roomId });
+      } finally {
+        // Clear local state regardless of server ack — the person is
+        // navigating away either way, and a stale room in the store
+        // would otherwise linger and confuse the next page they visit.
+        clearRoom();
+      }
+    },
+    [clearRoom]
+  );
+
+  return { room, isHost, error, createRoom, joinRoom, addBot, startGame, leaveRoom, clearRoom };
 }

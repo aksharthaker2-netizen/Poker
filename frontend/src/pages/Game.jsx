@@ -14,6 +14,8 @@ export default function Game() {
   const userId = localStorage.getItem('userId');
 
   const room = useRoomStore((s) => s.room);
+  const clearRoom = useRoomStore((s) => s.clearRoom);
+  const resetGame = useGameStore((s) => s.resetGame);
   const {
     gameState,
     communityCards,
@@ -66,6 +68,21 @@ export default function Game() {
     }
   };
 
+  const handleLeaveTable = async () => {
+    try {
+      // Leaving mid-game doesn't remove you instantly (see
+      // gameFlowManager.handlePlayerLeaving) — it marks you disconnected
+      // immediately, auto-folds you if it's currently your turn, and
+      // your seat actually frees up before the next hand deals. The
+      // frontend just needs to get out of the way now.
+      await emitWithAck('LEAVE_ROOM', { roomId });
+    } finally {
+      clearRoom();
+      resetGame();
+      navigate('/');
+    }
+  };
+
   if (!room) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#0B0F10] text-[#8B9A94]">
@@ -76,6 +93,15 @@ export default function Game() {
 
   return (
     <div className="min-h-screen bg-[#0B0F10] px-4 py-10">
+      <div className="mx-auto mb-4 flex max-w-3xl justify-end">
+        <button
+          onClick={handleLeaveTable}
+          className="rounded border border-[#22302B] px-3 py-1.5 text-sm text-[#8B9A94] transition hover:border-[#B23A2E] hover:text-[#B23A2E]"
+        >
+          Leave table
+        </button>
+      </div>
+
       <PokerTable
         room={room}
         gameState={gameState}

@@ -3,8 +3,9 @@ import { useState } from 'react';
 import SeatList from './SeatList';
 import BotSettings from './BotSettings';
 
-export default function WaitingRoom({ room, isHost, onAddBot, onStartGame }) {
+export default function WaitingRoom({ room, isHost, onAddBot, onStartGame, onLeaveRoom }) {
   const [starting, setStarting] = useState(false);
+  const [leaving, setLeaving] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const seatedCount = room.seats.filter(Boolean).length;
@@ -23,6 +24,15 @@ export default function WaitingRoom({ room, isHost, onAddBot, onStartGame }) {
       await onStartGame();
     } finally {
       setStarting(false);
+    }
+  };
+
+  const handleLeave = async () => {
+    setLeaving(true);
+    try {
+      await onLeaveRoom();
+    } finally {
+      setLeaving(false);
     }
   };
 
@@ -67,6 +77,14 @@ export default function WaitingRoom({ room, isHost, onAddBot, onStartGame }) {
       ) : (
         <p className="text-center text-sm text-[#8B9A94]">Waiting for the host to start the game…</p>
       )}
+
+      <button
+        onClick={handleLeave}
+        disabled={leaving}
+        className="rounded border border-[#22302B] px-4 py-2 text-sm text-[#8B9A94] transition hover:border-[#B23A2E] hover:text-[#B23A2E] disabled:opacity-50"
+      >
+        {leaving ? 'Leaving…' : 'Leave room'}
+      </button>
     </div>
   );
 }

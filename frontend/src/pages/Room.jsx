@@ -10,7 +10,7 @@ export default function Room() {
   const userId = localStorage.getItem('userId');
   const username = localStorage.getItem('username') || '';
 
-  const { room, isHost, error, joinRoom, addBot, startGame } = useRoom(userId);
+  const { room, isHost, error, joinRoom, addBot, startGame, leaveRoom } = useRoom(userId);
 
   // If the store doesn't already hold this room (e.g. page refresh, or
   // arriving via a shared link), rejoin it explicitly.
@@ -68,6 +68,10 @@ export default function Room() {
         isHost={isHost}
         onAddBot={() => addBot(roomId)}
         onStartGame={() => startGame(roomId)}
+        onLeaveRoom={async () => {
+          await leaveRoom(roomId);
+          navigate('/');
+        }}
       />
     </div>
   );
