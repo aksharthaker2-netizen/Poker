@@ -7,12 +7,14 @@ const app = require('./app');
 const { initializeSocket } = require('./socket');
 const { startCleanupJob } = require('./jobs/cleanupStaleRooms');
 const { startLeaderboardJob } = require('./jobs/recalculateLeaderboard');
+const { startPruneDisconnectedSeatsJob } = require('./jobs/pruneDisconnectedSeats');
 
 const httpServer = http.createServer(app);
 
-initializeSocket(httpServer);
+const io = initializeSocket(httpServer);
 startCleanupJob();
 startLeaderboardJob();
+startPruneDisconnectedSeatsJob(io); // needs `io` to broadcast ROOM_UPDATED after freeing a seat
 
 httpServer.listen(env.PORT, () => {
   console.log(`[Server] PokerAI backend listening on port ${env.PORT} (${env.NODE_ENV})`);

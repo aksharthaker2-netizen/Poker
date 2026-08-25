@@ -2,6 +2,7 @@
 const roomManager = require('../managers/roomManager');
 const botManager = require('../managers/botManager');
 const persistenceService = require('../services/persistenceService');
+const { DISCONNECT_GRACE_MS } = require('../utils/constants');
 
 /**
  * Privately deals each seated human their own two hole cards.
@@ -165,6 +166,14 @@ function scheduleNextHand(io, roomId) {
     const room = roomManager.getRoom(roomId);
     if (!room || !room.game || room.status !== 'PLAYING') return;
 
+    // Safe pruning window: no hand is active here (the previous one just
+    // finished, the next hasn't started). Anyone who's been disconnected
+    // past the grace period gets their seat freed now — see
+    // roomManager.pruneDisconnectedPlayers' doc comment for why this can
+    // ONLY happen in a window like this, never mid-hand.
+    const { destroyed } = roomManager.pruneDisconnectedPlayers(room);
+    if (destroyed) return; // room (and everyone in it) is gone
+
     const playersWithChips = room.game.players.filter((p) => p.chips > 0);
     if (playersWithChips.length < 2) {
       persistenceService.markGameEnded(room); // fire-and-forget
@@ -209,10 +218,50 @@ async function forceFoldIfCurrentActor(io, roomId, userId) {
   }
 }
 
+/**
+ * SINGLE shared entry point for "a player is leaving this room" — used by
+ * both a real socket disconnect and an explicit LEAVE_ROOM click. Behavior
+ * depends on whether a game is in progress:
+ *
+ * - WAITING (no hand structure exists): safe to remove them immediately —
+ *   delegates straight to roomManager.leaveRoom.
+ * - PLAYING: can't safely rip them out of `game.players` mid-hand (see
+ *   roomManager.pruneDisconnectedPlayers' doc comment). Instead: mark them
+ *   disconnected so the existing per-turn auto-fold logic in
+ *   broadcastAndCheckBot handles their current hand, immediately fold them
+ *   if it's already their turn, and let scheduleNextHand's between-hands
+ *   prune free their seat before the next hand deals.
+ *
+ * @param {Boolean} immediate - true for an explicit "Leave Room" click, so
+ *   the player doesn't have to wait out the full reconnect grace period
+ *   before their seat actually frees up between hands.
+ */
+async function handlePlayerLeaving(io, roomId, userId, { immediate = false } = {}) {
+  const room = roomManager.getRoom(roomId);
+  if (!room) return;
+
+  if (room.status === 'WAITING') {
+    const result = roomManager.leaveRoom(roomId, userId);
+    if (result?.destroyed) return;
+    io.to(roomId).emit('ROOM_UPDATED', { room });
+    return;
+  }
+
+  const timestamp = immediate ? Date.now() - DISCONNECT_GRACE_MS - 1 : Date.now();
+  room.disconnectedPlayerIds.set(userId, timestamp);
+
+  if (room.game) {
+    await forceFoldIfCurrentActor(io, roomId, userId);
+  }
+
+  io.to(roomId).emit('ROOM_UPDATED', { room });
+}
+
 module.exports = {
   dealPrivateHands,
   buildPublicPayload,
   broadcastAndCheckBot,
   forceFoldIfCurrentActor,
-  scheduleNextHand
+  scheduleNextHand,
+  handlePlayerLeaving
 };

@@ -18,6 +18,11 @@ const HAND_STAGES = Object.freeze({
 
 const ROOM_LIMITS = Object.freeze({ MIN_PLAYERS: 2, MAX_PLAYERS: 10 });
 
+// How long a disconnected player's seat is held before it's freed up for
+// someone else. Applied uniformly by roomManager.pruneDisconnectedPlayers —
+// see that function's doc comment for why pruning is NEVER safe mid-hand.
+const DISCONNECT_GRACE_MS = 2 * 60 * 1000; // 2 minutes
+
 const ACHIEVEMENT_KEYS = Object.freeze({
   FIRST_WIN: 'FIRST_WIN',
   WIN_STREAK_5: 'WIN_STREAK_5',
@@ -32,4 +37,4 @@ const ACHIEVEMENT_KEYS = Object.freeze({
 // cosmetic dedupe isn't worth the risk. New code (controllers, services)
 // should use this file instead of redefining these strings.
 
-module.exports = { ACTIONS, HAND_STAGES, ROOM_LIMITS, ACHIEVEMENT_KEYS };
+module.exports = { ACTIONS, HAND_STAGES, ROOM_LIMITS, DISCONNECT_GRACE_MS, ACHIEVEMENT_KEYS };

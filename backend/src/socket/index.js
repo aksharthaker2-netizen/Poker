@@ -5,24 +5,18 @@ const registerRoomHandlers = require('./roomSocket');
 const registerGameHandlers = require('./gameSocket');
 const registerFriendHandlers = require('./friendSocket');
 const presenceManager = require('../managers/presenceManager');
-const roomManager = require('../managers/roomManager');
-const { forceFoldIfCurrentActor } = require('./gameFlowManager');
+const { handlePlayerLeaving } = require('./gameFlowManager');
 
 let io;
 
-/**
- * Initializes the Socket.io server and binds it to the Express HTTP server
- */
 function initializeSocket(httpServer) {
   io = new Server(httpServer, {
     cors: {
-      origin: process.env.FRONTEND_URL || '*', // set FRONTEND_URL explicitly in production
+      origin: process.env.FRONTEND_URL || '*',
       methods: ['GET', 'POST']
     }
   });
 
-  // Verifies the JWT once per connection and attaches socket.data.userId.
-  // Every handler downstream trusts THIS, never a client-supplied payload field.
   io.use(socketAuthMiddleware);
 
   io.on('connection', (socket) => {
@@ -30,9 +24,6 @@ function initializeSocket(httpServer) {
     console.log(`[Socket] ${userId} connected (${socket.id})`);
 
     presenceManager.connectUser(userId, socket.id);
-
-    // Personal channel used by gameFlowManager to privately deliver hole
-    // cards (YOUR_HAND) and by friendSocket to deliver invites.
     socket.join(`user:${userId}`);
 
     registerRoomHandlers(io, socket);
@@ -41,6 +32,12 @@ function initializeSocket(httpServer) {
 
     // SINGLE centralized disconnect handler. Order matters: we read the
     // user's roomId from presence BEFORE wiping their presence record.
+    //
+    // FIX: this read was previously dead code — nothing ever called
+    // presenceManager.setInGame(), so `presenceRecord.roomId` was ALWAYS
+    // null and this handler's cleanup path never actually ran on a real
+    // disconnect. roomSocket.js now calls setInGame() when a player joins
+    // a room, so this actually fires now.
     socket.on('disconnect', async () => {
       console.log(`[Socket] ${userId} disconnected (${socket.id})`);
 
@@ -51,30 +48,17 @@ function initializeSocket(httpServer) {
 
       if (!roomId) return;
 
-      const room = roomManager.getRoom(roomId);
-      if (!room) return;
-
-      roomManager.markDisconnected(roomId, userId);
-
-      // If a game is in progress and it happens to be this player's turn
-      // right now, fold them immediately instead of stalling the table
-      // until someone notices. If it's not their turn yet, the shared
-      // turn loop (gameFlowManager.broadcastAndCheckBot) will auto-fold
-      // them the moment their turn comes up.
-      if (room.status === 'PLAYING' && room.game) {
-        await forceFoldIfCurrentActor(io, roomId, userId);
-      }
-
-      io.to(roomId).emit('ROOM_UPDATED', { room });
+      // Delegates to the SAME logic an explicit "Leave Room" click uses —
+      // see gameFlowManager.handlePlayerLeaving for the full policy
+      // (immediate removal if no hand is in progress, grace-period +
+      // auto-fold if one is).
+      await handlePlayerLeaving(io, roomId, userId);
     });
   });
 
   return io;
 }
 
-/**
- * Allows other parts of the app to access the io instance if needed
- */
 function getIo() {
   if (!io) {
     throw new Error('Socket.io has not been initialized yet!');

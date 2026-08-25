@@ -3,6 +3,7 @@ const GameEngine = require('../gameEngine/gameEngine');
 const seatManager = require('./seatManager');
 const persistenceService = require('../services/persistenceService');
 const { generateRoomCode } = require('../utils/roomCodeGenerator');
+const { DISCONNECT_GRACE_MS } = require('../utils/constants');
 
 class RoomManager {
   constructor() {
@@ -36,7 +37,9 @@ class RoomManager {
       seats: seatManager.initializeSeats(maxPlayers),
       game: null,
       status: 'WAITING',
-      disconnectedPlayerIds: new Set(),
+      // Map<userId, disconnectedAtMs> — a Map (not Set) so we can tell
+      // WHEN someone disconnected, needed for grace-period pruning below.
+      disconnectedPlayerIds: new Map(),
       _createdAtMs: Date.now() // used by jobs/cleanupStaleRooms.js to prune abandoned rooms
     };
 
@@ -130,10 +133,12 @@ class RoomManager {
   /**
    * Marks a seated human as disconnected without removing their seat, so
    * the game loop can auto-fold them on their turn instead of stalling.
+   * Records the timestamp so pruneDisconnectedPlayers can enforce a
+   * reconnect grace period.
    */
   markDisconnected(roomId, userId) {
     const room = this.rooms.get(roomId);
-    if (room) room.disconnectedPlayerIds.add(userId);
+    if (room) room.disconnectedPlayerIds.set(userId, Date.now());
   }
 
   /**
@@ -142,6 +147,65 @@ class RoomManager {
   markReconnected(roomId, userId) {
     const room = this.rooms.get(roomId);
     if (room) room.disconnectedPlayerIds.delete(userId);
+  }
+
+  /**
+   * Permanently removes anyone who's been disconnected past the grace
+   * period — frees their seat, reassigns host if needed, destroys the
+   * room if nobody human is left.
+   *
+   * CRITICAL SAFETY CONSTRAINT: this must ONLY ever be called when no
+   * hand is actively in progress for this room (i.e. `room.status ===
+   * 'WAITING'`, or the brief between-hands window in
+   * gameFlowManager.scheduleNextHand right before startHand() runs).
+   * Removing a player from `room.game.players` mid-hand would break
+   * showdown payouts — GameEngine.evaluateShowdown looks up
+   * `this.players.find(p => p.id === winnerId)` to credit chips, and if
+   * that player was already spliced out, their winnings silently
+   * vanish (the `if (playerObj)` guard there swallows it instead of
+   * crashing, which makes the bug even easier to miss). Callers are
+   * responsible for only invoking this in a safe window.
+   */
+  pruneDisconnectedPlayers(room, graceMs = DISCONNECT_GRACE_MS) {
+    const now = Date.now();
+    const prunedIds = [];
+
+    for (const [userId, disconnectedAt] of room.disconnectedPlayerIds.entries()) {
+      if (now - disconnectedAt < graceMs) continue; // still within grace period
+
+      seatManager.leaveSeat(room, userId);
+      room.disconnectedPlayerIds.delete(userId);
+      prunedIds.push(userId);
+
+      if (room.game) {
+        room.game.players = room.game.players.filter((p) => p.id !== userId);
+        room.game.turnManager.removePlayer(userId); // safe no-op if not currently tracked
+      }
+    }
+
+    if (prunedIds.length === 0) return { prunedIds, destroyed: false };
+
+    const remainingPlayers = seatManager.getActivePlayers(room);
+
+    if (remainingPlayers.length === 0) {
+      if (room.game) persistenceService.markGameEnded(room);
+      this.rooms.delete(room.id);
+      return { prunedIds, destroyed: true };
+    }
+
+    const hasRemainingHuman = remainingPlayers.some((p) => !p.isBot);
+    if (!hasRemainingHuman) {
+      if (room.game) persistenceService.markGameEnded(room);
+      this.rooms.delete(room.id);
+      return { prunedIds, destroyed: true };
+    }
+
+    if (prunedIds.includes(room.hostId)) {
+      const nextHuman = remainingPlayers.find((p) => !p.isBot);
+      room.hostId = nextHuman.id;
+    }
+
+    return { prunedIds, destroyed: false };
   }
 
   /**

@@ -1,7 +1,8 @@
 // src/socket/roomSocket.js
 const roomManager = require('../managers/roomManager');
 const botManager = require('../managers/botManager');
-const { dealPrivateHands, broadcastAndCheckBot } = require('./gameFlowManager');
+const presenceManager = require('../managers/presenceManager');
+const { dealPrivateHands, broadcastAndCheckBot, handlePlayerLeaving } = require('./gameFlowManager');
 
 module.exports = function registerRoomHandlers(io, socket) {
   // Trusted identity, verified once by socketAuthMiddleware at connection.
@@ -24,6 +25,11 @@ module.exports = function registerRoomHandlers(io, socket) {
         chips: settings?.startingChips
       });
 
+      // FIX: this was never called anywhere, which meant
+      // presenceManager.getUser(userId).roomId was always null and the
+      // disconnect handler's whole cleanup path was unreachable dead code.
+      presenceManager.setInGame(userId, newRoom.id);
+
       console.log(`[Room] ${username} created room ${newRoom.id}`);
       if (typeof callback === 'function') callback({ success: true, room: updatedRoom });
     } catch (error) {
@@ -43,6 +49,7 @@ module.exports = function registerRoomHandlers(io, socket) {
         requestedSeat
       );
       socket.join(roomId);
+      presenceManager.setInGame(userId, roomId);
 
       console.log(`[Room] ${username} joined room ${roomId}`);
 
@@ -108,17 +115,32 @@ module.exports = function registerRoomHandlers(io, socket) {
       if (typeof callback === 'function') callback({ success: true });
 
       // Drive the turn forward through the SAME shared loop gameSocket.js
-      // uses after every human action — this is what fixes both the
-      // "firstActorId doesn't exist" bug and the "bot chain breaks after
-      // one turn" bug from the previous version.
+      // uses after every human action.
       await broadcastAndCheckBot(io, roomId, {
         state: initialGameState.state,
-        nextPlayerId: initialGameState.turnData.currentActorId, // was: turnData.firstActorId (never existed)
+        nextPlayerId: initialGameState.turnData.currentActorId,
         potSize: initialGameState.potSize,
         highestBet: room.game.bettingManager.highestBet
       });
     } catch (error) {
       console.error('[Room Error - Start]', error.message);
+      if (typeof callback === 'function') callback({ success: false, error: error.message });
+    }
+  });
+
+  // 5. LEAVE THE ROOM (new — this whole event didn't exist before)
+  socket.on('LEAVE_ROOM', async (payload, callback) => {
+    try {
+      const { roomId } = payload;
+
+      await handlePlayerLeaving(io, roomId, userId, { immediate: true });
+      socket.leave(roomId);
+      presenceManager.setOnline(userId);
+
+      console.log(`[Room] ${userId} left room ${roomId}`);
+      if (typeof callback === 'function') callback({ success: true });
+    } catch (error) {
+      console.error('[Room Error - Leave]', error.message);
       if (typeof callback === 'function') callback({ success: false, error: error.message });
     }
   });
