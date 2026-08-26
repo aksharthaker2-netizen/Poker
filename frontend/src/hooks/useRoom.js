@@ -13,7 +13,8 @@ import { useGameStore } from '../store/gameStore';
  */
 export function useRoom(currentUserId) {
   const socket = useSocket();
-  const { room, isHost, error, setRoom, setError, clearRoom } = useRoomStore();
+  const { room, isHost, error, closedReason, setRoom, setError, setClosedReason, clearRoom } =
+    useRoomStore();
   const applyGameStarted = useGameStore((s) => s.applyGameStarted);
 
   useEffect(() => {
@@ -28,12 +29,24 @@ export function useRoom(currentUserId) {
       setRoom({ ...room, status: 'PLAYING' }, currentUserId);
     };
 
+    const onRoomClosed = ({ reason }) => {
+      setClosedReason(reason || 'The room was closed.');
+    };
+
+    const onKicked = () => {
+      setClosedReason('You were removed from the room by the host.');
+    };
+
     socket.on('ROOM_UPDATED', onRoomUpdated);
     socket.on('GAME_STARTED', onGameStarted);
+    socket.on('ROOM_CLOSED', onRoomClosed);
+    socket.on('KICKED_FROM_ROOM', onKicked);
 
     return () => {
       socket.off('ROOM_UPDATED', onRoomUpdated);
       socket.off('GAME_STARTED', onGameStarted);
+      socket.off('ROOM_CLOSED', onRoomClosed);
+      socket.off('KICKED_FROM_ROOM', onKicked);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket, currentUserId]);
@@ -108,5 +121,55 @@ export function useRoom(currentUserId) {
     [clearRoom]
   );
 
-  return { room, isHost, error, createRoom, joinRoom, addBot, startGame, leaveRoom, clearRoom };
+  const kickPlayer = useCallback(
+    async (roomId, targetUserId) => {
+      try {
+        await emitWithAck('KICK_PLAYER', { roomId, targetUserId });
+      } catch (err) {
+        setError(err.message);
+        throw err;
+      }
+    },
+    [setError]
+  );
+
+  const removeBot = useCallback(
+    async (roomId, botId) => {
+      try {
+        await emitWithAck('REMOVE_BOT', { roomId, botId });
+      } catch (err) {
+        setError(err.message);
+        throw err;
+      }
+    },
+    [setError]
+  );
+
+  const closeRoom = useCallback(
+    async (roomId) => {
+      try {
+        await emitWithAck('CLOSE_ROOM', { roomId });
+      } finally {
+        // Same reasoning as leaveRoom — the room is gone either way.
+        clearRoom();
+      }
+    },
+    [clearRoom]
+  );
+
+  return {
+    room,
+    isHost,
+    error,
+    closedReason,
+    createRoom,
+    joinRoom,
+    addBot,
+    startGame,
+    leaveRoom,
+    kickPlayer,
+    removeBot,
+    closeRoom,
+    clearRoom
+  };
 }

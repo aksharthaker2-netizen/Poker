@@ -10,7 +10,20 @@ export default function Room() {
   const userId = localStorage.getItem('userId');
   const username = localStorage.getItem('username') || '';
 
-  const { room, isHost, error, joinRoom, addBot, startGame, leaveRoom } = useRoom(userId);
+  const {
+    room,
+    isHost,
+    error,
+    closedReason,
+    joinRoom,
+    addBot,
+    startGame,
+    leaveRoom,
+    kickPlayer,
+    removeBot,
+    closeRoom,
+    clearRoom
+  } = useRoom(userId);
 
   // If the store doesn't already hold this room (e.g. page refresh, or
   // arriving via a shared link), rejoin it explicitly.
@@ -30,6 +43,14 @@ export default function Room() {
       navigate(`/game/${roomId}`);
     }
   }, [room?.status, roomId, navigate]);
+
+  // Host closed the room, or I got kicked — either way, get out.
+  useEffect(() => {
+    if (closedReason) {
+      clearRoom();
+      navigate('/', { state: { notice: closedReason } });
+    }
+  }, [closedReason, clearRoom, navigate]);
 
   if (!userId) {
     return (
@@ -66,10 +87,17 @@ export default function Room() {
       <WaitingRoom
         room={room}
         isHost={isHost}
+        myUserId={userId}
         onAddBot={() => addBot(roomId)}
         onStartGame={() => startGame(roomId)}
         onLeaveRoom={async () => {
           await leaveRoom(roomId);
+          navigate('/');
+        }}
+        onKickPlayer={(targetUserId) => kickPlayer(roomId, targetUserId)}
+        onRemoveBot={(botId) => removeBot(roomId, botId)}
+        onCloseRoom={async () => {
+          await closeRoom(roomId);
           navigate('/');
         }}
       />

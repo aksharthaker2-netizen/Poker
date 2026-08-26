@@ -3,9 +3,21 @@ import { useState } from 'react';
 import SeatList from './SeatList';
 import BotSettings from './BotSettings';
 
-export default function WaitingRoom({ room, isHost, onAddBot, onStartGame, onLeaveRoom }) {
+export default function WaitingRoom({
+  room,
+  isHost,
+  myUserId,
+  onAddBot,
+  onStartGame,
+  onLeaveRoom,
+  onKickPlayer,
+  onRemoveBot,
+  onCloseRoom
+}) {
   const [starting, setStarting] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const [confirmingClose, setConfirmingClose] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const seatedCount = room.seats.filter(Boolean).length;
@@ -36,6 +48,23 @@ export default function WaitingRoom({ room, isHost, onAddBot, onStartGame, onLea
     }
   };
 
+  const handleCloseRoom = async () => {
+    if (!confirmingClose) {
+      setConfirmingClose(true);
+      // Auto-reset the confirmation state after a few seconds rather than
+      // relying on onBlur (which can race with the second click landing
+      // in some browsers — focus can shift before the click registers).
+      setTimeout(() => setConfirmingClose(false), 3000);
+      return;
+    }
+    setClosing(true);
+    try {
+      await onCloseRoom();
+    } finally {
+      setClosing(false);
+    }
+  };
+
   return (
     <div className="mx-auto flex max-w-xl flex-col gap-6">
       <div className="flex items-center justify-between rounded-lg border border-[#22302B] bg-[#0F1513] p-4">
@@ -55,7 +84,14 @@ export default function WaitingRoom({ room, isHost, onAddBot, onStartGame, onLea
         <p className="mb-2 text-sm text-[#8B9A94]">
           {seatedCount} / {room.seats.length} players seated
         </p>
-        <SeatList seats={room.seats} hostId={room.hostId} />
+        <SeatList
+          seats={room.seats}
+          hostId={room.hostId}
+          isHost={isHost}
+          myUserId={myUserId}
+          onKickPlayer={onKickPlayer}
+          onRemoveBot={onRemoveBot}
+        />
       </div>
 
       {isHost && (
@@ -85,6 +121,20 @@ export default function WaitingRoom({ room, isHost, onAddBot, onStartGame, onLea
       >
         {leaving ? 'Leaving…' : 'Leave room'}
       </button>
+
+      {isHost && (
+        <button
+          onClick={handleCloseRoom}
+          disabled={closing}
+          className={`rounded border px-4 py-2 text-sm transition disabled:opacity-50 ${
+            confirmingClose
+              ? 'border-[#B23A2E] bg-[#B23A2E]/10 text-[#B23A2E]'
+              : 'border-[#22302B] text-[#5A6B64] hover:border-[#B23A2E] hover:text-[#B23A2E]'
+          }`}
+        >
+          {closing ? 'Closing…' : confirmingClose ? 'Click again to confirm close' : 'Close room'}
+        </button>
+      )}
     </div>
   );
 }

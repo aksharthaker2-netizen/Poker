@@ -47,14 +47,32 @@ export default function Game() {
     // This only fires when it genuinely can't continue.
     const onGameEnded = ({ reason }) => setGameEndedReason(reason);
 
+    // Host closed the room, or I got kicked, WHILE I was at the table —
+    // fully supported server-side (KICK_PLAYER/CLOSE_ROOM don't check
+    // whether a game is in progress). Get out immediately.
+    const onRoomClosed = ({ reason }) => {
+      clearRoom();
+      resetGame();
+      navigate('/', { state: { notice: reason || 'The room was closed.' } });
+    };
+    const onKicked = () => {
+      clearRoom();
+      resetGame();
+      navigate('/', { state: { notice: 'You were removed from the room by the host.' } });
+    };
+
     socket.on('YOUR_HAND', onYourHand);
     socket.on('GAME_STATE_UPDATED', onGameStateUpdated);
     socket.on('GAME_ENDED', onGameEnded);
+    socket.on('ROOM_CLOSED', onRoomClosed);
+    socket.on('KICKED_FROM_ROOM', onKicked);
 
     return () => {
       socket.off('YOUR_HAND', onYourHand);
       socket.off('GAME_STATE_UPDATED', onGameStateUpdated);
       socket.off('GAME_ENDED', onGameEnded);
+      socket.off('ROOM_CLOSED', onRoomClosed);
+      socket.off('KICKED_FROM_ROOM', onKicked);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket]);

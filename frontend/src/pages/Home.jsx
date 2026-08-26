@@ -1,6 +1,6 @@
 // src/pages/Home.jsx
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import CreateRoomForm from '../components/lobby/CreateRoomForm';
 import JoinRoomForm from '../components/lobby/JoinRoomForm';
 import { useRoom } from '../hooks/useRoom';
@@ -21,6 +21,7 @@ function NavLink({ to, children, navigate }) {
 
 export default function Home() {
   const navigate = useNavigate();
+  const location = useLocation();
   const socket = useSocket();
   const userId = localStorage.getItem('userId');
   const username = localStorage.getItem('username') || '';
@@ -28,6 +29,9 @@ export default function Home() {
   const { createRoom, joinRoom, error } = useRoom(userId);
   const [loading, setLoading] = useState(false);
   const [invite, setInvite] = useState(null);
+  // Passed via navigate('/', { state: { notice } }) when Room.jsx/Game.jsx
+  // bounce someone here after a ROOM_CLOSED or KICKED_FROM_ROOM event.
+  const [notice, setNotice] = useState(location.state?.notice || null);
 
   useEffect(() => {
     if (!socket) return;
@@ -119,6 +123,15 @@ export default function Home() {
               </button>
             </div>
           </div>
+        )}
+
+        {notice && (
+          <p className="mb-4 flex items-center justify-between rounded border border-[#22302B] bg-[#12181B] px-3 py-2 text-sm text-[#8B9A94]">
+            {notice}
+            <button onClick={() => setNotice(null)} className="text-[#5A6B64] hover:text-[#EDEAE3]">
+              ✕
+            </button>
+          </p>
         )}
 
         {error && (

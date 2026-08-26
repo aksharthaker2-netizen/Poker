@@ -11,6 +11,9 @@ export const useRoomStore = create((set) => ({
   room: null,
   isHost: false,
   error: null,
+  // Set when the room is closed by the host, or when I get kicked —
+  // Room.jsx/Game.jsx watch this to navigate away with an explanation.
+  closedReason: null,
 
   setRoom: (room, currentUserId) =>
     set({
@@ -20,6 +23,7 @@ export const useRoomStore = create((set) => ({
     }),
 
   setError: (error) => set({ error }),
+  setClosedReason: (reason) => set({ closedReason: reason }),
 
-  clearRoom: () => set({ room: null, isHost: false, error: null })
+  clearRoom: () => set({ room: null, isHost: false, error: null, closedReason: null })
 }));
