@@ -8,7 +8,10 @@ function create(roomDbId) {
 function updateStatus(gameDbId, status) {
   return prisma.game.update({
     where: { id: gameDbId },
-    data: { status, ...(status === 'COMPLETED' ? { endedAt: new Date() } : {}) }
+    data: {
+      status,
+      ...(status === 'COMPLETED' || status === 'ABORTED' ? { endedAt: new Date() } : {})
+    }
   });
 }
 

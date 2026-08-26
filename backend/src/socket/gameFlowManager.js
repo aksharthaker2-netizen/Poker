@@ -219,9 +219,12 @@ async function forceFoldIfCurrentActor(io, roomId, userId) {
 }
 
 /**
- * SINGLE shared entry point for "a player is leaving this room" — used by
- * both a real socket disconnect and an explicit LEAVE_ROOM click. Behavior
- * depends on whether a game is in progress:
+ * SINGLE shared entry point for "an occupant is leaving this room" — used
+ * by a real socket disconnect, an explicit LEAVE_ROOM click, AND
+ * host-initiated KICK_PLAYER / REMOVE_BOT (this function doesn't care WHO
+ * decided the occupant should leave — the caller is responsible for any
+ * authorization check, e.g. "only the host may kick"). Behavior depends
+ * on whether a game is in progress:
  *
  * - WAITING (no hand structure exists): safe to remove them immediately —
  *   delegates straight to roomManager.leaveRoom.
@@ -230,10 +233,14 @@ async function forceFoldIfCurrentActor(io, roomId, userId) {
  *   disconnected so the existing per-turn auto-fold logic in
  *   broadcastAndCheckBot handles their current hand, immediately fold them
  *   if it's already their turn, and let scheduleNextHand's between-hands
- *   prune free their seat before the next hand deals.
+ *   prune free their seat before the next hand deals. Works identically
+ *   for bots (REMOVE_BOT) — bots aren't treated as "disconnected" for
+ *   turn-taking purposes (see the isDisconnectedHuman check above, which
+ *   explicitly excludes bots), so a bot marked here just keeps playing
+ *   normally via botManager until the between-hands prune removes it.
  *
- * @param {Boolean} immediate - true for an explicit "Leave Room" click, so
- *   the player doesn't have to wait out the full reconnect grace period
+ * @param {Boolean} immediate - true for an explicit leave/kick/remove, so
+ *   the occupant doesn't have to wait out the full reconnect grace period
  *   before their seat actually frees up between hands.
  */
 async function handlePlayerLeaving(io, roomId, userId, { immediate = false } = {}) {
@@ -257,11 +264,35 @@ async function handlePlayerLeaving(io, roomId, userId, { immediate = false } = {
   io.to(roomId).emit('ROOM_UPDATED', { room });
 }
 
+/**
+ * Host-initiated "close room" — an emergency stop, not a normal ending.
+ * Notifies everyone, marks the DB Game ABORTED if a hand was in progress
+ * (see persistenceService.markGameAborted for why chips already in the
+ * live pot are NOT settled/refunded), then deletes the room outright.
+ */
+async function closeRoom(io, roomId, reason = 'The host closed the room') {
+  const room = roomManager.getRoom(roomId);
+  if (!room) return;
+
+  io.to(roomId).emit('ROOM_CLOSED', { reason });
+
+  if (room.game) {
+    if (room.status === 'PLAYING') {
+      await persistenceService.markGameAborted(room);
+    } else {
+      await persistenceService.markGameEnded(room);
+    }
+  }
+
+  roomManager.deleteRoom(roomId);
+}
+
 module.exports = {
   dealPrivateHands,
   buildPublicPayload,
   broadcastAndCheckBot,
   forceFoldIfCurrentActor,
   scheduleNextHand,
-  handlePlayerLeaving
+  handlePlayerLeaving,
+  closeRoom
 };

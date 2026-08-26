@@ -2,7 +2,7 @@
 const roomManager = require('../managers/roomManager');
 const botManager = require('../managers/botManager');
 const presenceManager = require('../managers/presenceManager');
-const { dealPrivateHands, broadcastAndCheckBot, handlePlayerLeaving } = require('./gameFlowManager');
+const { dealPrivateHands, broadcastAndCheckBot, handlePlayerLeaving, closeRoom } = require('./gameFlowManager');
 
 module.exports = function registerRoomHandlers(io, socket) {
   // Trusted identity, verified once by socketAuthMiddleware at connection.
@@ -128,7 +128,7 @@ module.exports = function registerRoomHandlers(io, socket) {
     }
   });
 
-  // 5. LEAVE THE ROOM (new — this whole event didn't exist before)
+  // 5. LEAVE THE ROOM
   socket.on('LEAVE_ROOM', async (payload, callback) => {
     try {
       const { roomId } = payload;
@@ -141,6 +141,87 @@ module.exports = function registerRoomHandlers(io, socket) {
       if (typeof callback === 'function') callback({ success: true });
     } catch (error) {
       console.error('[Room Error - Leave]', error.message);
+      if (typeof callback === 'function') callback({ success: false, error: error.message });
+    }
+  });
+
+  // 6. HOST: KICK A HUMAN PLAYER
+  socket.on('KICK_PLAYER', async (payload, callback) => {
+    try {
+      const { roomId, targetUserId } = payload;
+      const room = roomManager.getRoom(roomId);
+
+      if (!room) throw new Error('Room not found.');
+      if (room.hostId !== userId) throw new Error('Only the table host can remove players.');
+      if (targetUserId === userId) throw new Error('Use Leave Room to remove yourself.');
+
+      const targetSeat = room.seats.find((s) => s && s.id === targetUserId);
+      if (!targetSeat) throw new Error('Player is not seated in this room.');
+      if (targetSeat.isBot) throw new Error('Use Remove Bot for bot seats.');
+
+      // Reuses the exact same removal policy as a self-initiated leave —
+      // safe-immediately if WAITING, marked for between-hands removal if
+      // PLAYING. See handlePlayerLeaving's doc comment for the full
+      // reasoning; it doesn't care WHO decided the player should leave.
+      await handlePlayerLeaving(io, roomId, targetUserId, { immediate: true });
+
+      // Tell the kicked player's OWN client directly — ROOM_UPDATED alone
+      // (everyone else already got it) doesn't make it obvious to THEM
+      // specifically that they were removed rather than just seeing seats
+      // shift around.
+      io.to(`user:${targetUserId}`).emit('KICKED_FROM_ROOM', { roomId });
+
+      console.log(`[Room] Host kicked ${targetUserId} from room ${roomId}`);
+      if (typeof callback === 'function') callback({ success: true });
+    } catch (error) {
+      console.error('[Room Error - Kick]', error.message);
+      if (typeof callback === 'function') callback({ success: false, error: error.message });
+    }
+  });
+
+  // 7. HOST: REMOVE A BOT
+  socket.on('REMOVE_BOT', async (payload, callback) => {
+    try {
+      const { roomId, botId } = payload;
+      const room = roomManager.getRoom(roomId);
+
+      if (!room) throw new Error('Room not found.');
+      if (room.hostId !== userId) throw new Error('Only the table host can remove bots.');
+
+      const targetSeat = room.seats.find((s) => s && s.id === botId);
+      if (!targetSeat) throw new Error('Bot is not seated in this room.');
+      if (!targetSeat.isBot) throw new Error('That seat is not a bot.');
+
+      // Same underlying mechanism as KICK_PLAYER / LEAVE_ROOM — bots
+      // aren't special-cased here, see handlePlayerLeaving's doc comment
+      // for why that's safe (bots never get treated as "disconnected" for
+      // turn-taking purposes; this flag only matters to the between-hands
+      // prune).
+      await handlePlayerLeaving(io, roomId, botId, { immediate: true });
+
+      console.log(`[Room] Host removed bot ${botId} from room ${roomId}`);
+      if (typeof callback === 'function') callback({ success: true });
+    } catch (error) {
+      console.error('[Room Error - Remove Bot]', error.message);
+      if (typeof callback === 'function') callback({ success: false, error: error.message });
+    }
+  });
+
+  // 8. HOST: CLOSE THE ROOM
+  socket.on('CLOSE_ROOM', async (payload, callback) => {
+    try {
+      const { roomId } = payload;
+      const room = roomManager.getRoom(roomId);
+
+      if (!room) throw new Error('Room not found.');
+      if (room.hostId !== userId) throw new Error('Only the table host can close the room.');
+
+      await closeRoom(io, roomId, 'The host closed the room');
+
+      console.log(`[Room] Host closed room ${roomId}`);
+      if (typeof callback === 'function') callback({ success: true });
+    } catch (error) {
+      console.error('[Room Error - Close]', error.message);
       if (typeof callback === 'function') callback({ success: false, error: error.message });
     }
   });

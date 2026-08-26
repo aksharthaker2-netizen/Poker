@@ -241,6 +241,18 @@ class RoomManager {
   getRoom(roomId) {
     return this.rooms.get(roomId);
   }
+
+  /**
+   * Forcibly deletes a room regardless of its state — used by
+   * gameFlowManager.closeRoom (host-initiated "close room"). Unlike
+   * leaveRoom/pruneDisconnectedPlayers, this does NOT try to gracefully
+   * settle an in-progress hand — closing a room mid-hand is an emergency
+   * stop, not a normal ending. The caller (closeRoom) is responsible for
+   * marking the DB Game record ABORTED before calling this.
+   */
+  deleteRoom(roomId) {
+    this.rooms.delete(roomId);
+  }
 }
 
 module.exports = new RoomManager();

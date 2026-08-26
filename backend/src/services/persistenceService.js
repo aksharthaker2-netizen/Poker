@@ -202,6 +202,26 @@ async function markGameEnded(room) {
 }
 
 /**
+ * Used by gameFlowManager.closeRoom when the host force-closes a room
+ * WHILE a hand is actively in progress. Distinct from markGameEnded
+ * (COMPLETED) — ABORTED marks this as an emergency stop in history/stats,
+ * not a normal ending. Deliberately does NOT attempt to settle/redistribute
+ * whatever chips were already committed to the live pot — that's a rare
+ * admin action, not a real game outcome, and building correct chop/refund
+ * logic for an arbitrary mid-hand abort is out of scope for now.
+ */
+async function markGameAborted(room) {
+  await updateRoomStatus(room, 'ENDED');
+
+  if (!room.game?._dbGameId) return;
+  try {
+    await gameRepository.updateStatus(room.game._dbGameId, 'ABORTED');
+  } catch (error) {
+    console.error('[Persistence] Failed to abort Game record:', error.message);
+  }
+}
+
+/**
  * Syncs the DB Room row's status to match the in-memory room's
  * lifecycle. NOTE: in-memory `room.status` uses 'WAITING' | 'PLAYING'
  * (roomManager's own vocabulary) which does NOT match the Prisma
@@ -222,5 +242,6 @@ module.exports = {
   persistHandAction,
   persistCompletedHand,
   markGameEnded,
+  markGameAborted,
   updateRoomStatus
 };
