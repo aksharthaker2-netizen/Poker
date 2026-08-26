@@ -36,7 +36,7 @@ def extract_hand_records(hand):
     other_actor = "p2" if first_actor == "p1" else "p1"
     position_map = {first_actor: "SB", other_actor: "BB"}
 
-    committed = {"p1": blinds[0], "p2": blinds[1]}
+    committed = {first_actor: blinds[0], other_actor: blinds[1]}
     big_blind = blinds[1]
     pot = blinds[0] + blinds[1]
     num_bets = 1

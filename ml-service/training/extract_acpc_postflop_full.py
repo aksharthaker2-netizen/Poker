@@ -24,7 +24,13 @@ def extract_postflop_records(hand):
         parts = da.split()
         hole_cards[parts[2]] = [parts[3][0:2], parts[3][2:4]]
 
-    committed = {"p1": blinds[0], "p2": blinds[1]}
+        non_deal_preview = [a for a in actions if not a.startswith("d dh") and not a.startswith("d db")]
+    if not non_deal_preview:
+        return []
+    first_actor = non_deal_preview[0].split()[0]
+    other_actor = "p2" if first_actor == "p1" else "p1"
+
+    committed = {first_actor: blinds[0], other_actor: blinds[1]}
     pot = blinds[0] + blinds[1]
     board = []
     street = "Preflop"
