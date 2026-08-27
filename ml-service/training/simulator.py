@@ -271,12 +271,7 @@ def run_multiway_street(hole_cards_list, board, pot, stacks, folded, decide_fns,
     idx = 0
     order = [p for p in acting_order if not folded[p]]
     all_in = {i: (stacks[i] <= 0) for i in range(len(hole_cards_list))}
-    iteration_count = 0
     while True:
-        iteration_count += 1
-        if iteration_count > 200:
-            print(f"STUCK: committed={committed}, folded={folded}, all_in={all_in}, idx={idx}, order={order}, last_raiser={last_raiser}")
-            raise RuntimeError("Betting round exceeded 200 iterations - infinite loop")
         active = [p for p in range(len(hole_cards_list)) if not folded[p]]
         if len(active) == 1:
             return active[0], pot, stacks, folded, committed
@@ -419,17 +414,3 @@ def run_multiway_simulation(num_hands, num_players, decide_fns, sb_seat=None):
         for i in range(num_players):
             total_profits[i] += profits[i]
     return total_profits
-
-def resolve_multiway_showdown(hole_cards_list, board, still_in):
-    best_rank = None
-    winners = []
-    for i in still_in:
-        cards = [Card.new(c) for c in hole_cards_list[i]]
-        board_cards = [Card.new(c) for c in board]
-        rank = _showdown_evaluator.evaluate(board_cards, cards)
-        if best_rank is None or rank < best_rank:
-            best_rank = rank
-            winners = [i]
-        elif rank == best_rank:
-            winners.append(i)
-    return winners

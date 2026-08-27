@@ -14,6 +14,8 @@ app = FastAPI(title="Poker ML Service", version="0.1.0")
 @app.post("/decide", response_model=DecideResponse)
 def decide(req: DecideRequest):
     if not req.community_cards:
+        # ASSUMPTION: big blind = 10 chips, hardcoded. If the real game supports
+        # variable blind structures, this needs to come from the request instead
         pot_size_bb = req.pot_size / 10
         action = predictor.predict_preflop_action(
             hand_strength=features.hand_strength(req.hole_cards, []),
