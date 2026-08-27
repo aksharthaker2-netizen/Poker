@@ -10,7 +10,7 @@ from sklearn.preprocessing import LabelEncoder
 from xgboost import XGBClassifier
 from data_utils import load_postflop_split
 import pandas as pd
-
+from sklearn.metrics import accuracy_score, classification_report
 
 TRAIN_URL = "https://huggingface.co/datasets/RZ412/PokerBench/resolve/main/preflop_60k_train_set_game_scenario_information.csv"
 TEST_URL = "https://huggingface.co/datasets/RZ412/PokerBench/resolve/main/preflop_1k_test_set_game_scenario_information.csv"
@@ -71,8 +71,19 @@ pf_label_encoder = LabelEncoder()
 y_train_pf_encoded = pf_label_encoder.fit_transform(y_train_pf)
 y_test_pf_encoded = pf_label_encoder.transform(y_test_pf)
 
+import numpy as np
+
+raise_encoded_value = list(pf_label_encoder.classes_).index("raise")
+sample_weights = np.where(y_train_pf_encoded == raise_encoded_value, 2.5, 1.0)
+
 postflop_model = XGBClassifier(n_estimators=100, max_depth=6, random_state=42, eval_metric="mlogloss")
-evaluate_model("Postflop XGBoost", postflop_model, X_train_pf, y_train_pf_encoded, X_test_pf, y_test_pf_encoded)
+postflop_model.fit(X_train_pf, y_train_pf_encoded, sample_weight=sample_weights)
+
+pf_predictions = postflop_model.predict(X_test_pf)
+pf_accuracy = accuracy_score(y_test_pf_encoded, pf_predictions)
+print(f"\n=== Postflop XGBoost (raise-weighted) ===")
+print(f"Accuracy: {pf_accuracy:.2%}")
+print(classification_report(y_test_pf_encoded, pf_predictions))
 
 POSTFLOP_MODEL_PATH = Path(__file__).resolve().parent.parent / "app" / "model" / "postflop_xgboost_model.pkl"
 POSTFLOP_ENCODER_PATH = Path(__file__).resolve().parent.parent / "app" / "model" / "postflop_label_encoder.pkl"
