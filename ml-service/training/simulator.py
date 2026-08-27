@@ -258,3 +258,172 @@ def play_hand_full_log(opponent_pool, explore_rate=0.7, big_blind=10):
     for entry in logs:
         entry["hero_profit"] = hero_profit
     return logs
+
+def deal_multiway_hand(num_players):
+    deck = new_shuffled_deck()
+    hole_cards = [[deck.pop(), deck.pop()] for _ in range(num_players)]
+    board = [deck.pop() for _ in range(5)]
+    return hole_cards, board
+
+def run_multiway_street(hole_cards_list, board, pot, stacks, folded, decide_fns, positions,
+                         acting_order, committed, min_raise, num_bets):
+    last_raiser = None
+    idx = 0
+    order = [p for p in acting_order if not folded[p]]
+    all_in = {i: (stacks[i] <= 0) for i in range(len(hole_cards_list))}
+    iteration_count = 0
+    while True:
+        iteration_count += 1
+        if iteration_count > 200:
+            print(f"STUCK: committed={committed}, folded={folded}, all_in={all_in}, idx={idx}, order={order}, last_raiser={last_raiser}")
+            raise RuntimeError("Betting round exceeded 200 iterations - infinite loop")
+        active = [p for p in range(len(hole_cards_list)) if not folded[p]]
+        if len(active) == 1:
+            return active[0], pot, stacks, folded, committed
+
+        remaining_to_act = [p for p in active if not all_in[p]]
+        if not remaining_to_act:
+            break
+
+        if idx >= len(order):
+            idx = 0
+        player = order[idx]
+        if folded[player] or all_in[player]:
+            idx += 1
+            continue
+        if player == last_raiser:
+            break
+
+        to_call = max(committed.values()) - committed[player]
+        action, raise_amt = decide_fns[player](
+            hole_cards_list[player], board, pot, to_call, min_raise, num_bets, positions[player]
+        )
+
+        if action == "fold":
+            folded[player] = True
+        elif action == "raise":
+            current_max = max(committed.values())
+            intended_bet = max(raise_amt, current_max + min_raise)
+            bet = min(intended_bet, stacks[player] + committed[player])
+            if bet <= current_max:
+                call_amt = min(current_max - committed[player], stacks[player])
+                pot += call_amt
+                stacks[player] -= call_amt
+                committed[player] += call_amt
+            else:
+                extra = bet - committed[player]
+                pot += extra
+                stacks[player] -= extra
+                committed[player] = bet
+                last_raiser = player
+                num_bets += 1
+        else:
+            call_amt = min(to_call, stacks[player])
+            pot += call_amt
+            stacks[player] -= call_amt
+            committed[player] += call_amt
+
+        if stacks[player] <= 0:
+            all_in[player] = True
+
+        idx += 1
+        if last_raiser is None and idx >= len(order):
+            break
+
+    return None, pot, stacks, folded, committed
+
+def resolve_multiway_showdown(hole_cards_list, board, still_in):
+    best_rank = None
+    winners = []
+    for i in still_in:
+        cards = [Card.new(c) for c in hole_cards_list[i]]
+        board_cards = [Card.new(c) for c in board]
+        rank = _showdown_evaluator.evaluate(board_cards, cards)
+        if best_rank is None or rank < best_rank:
+            best_rank = rank
+            winners = [i]
+        elif rank == best_rank:
+            winners.append(i)
+    return winners
+
+def play_multiway_hand(decide_fns, num_players, starting_stack=1000, small_blind=5, big_blind=10):
+    print("MARKER: NEW CODE RUNNING", flush=True)
+    hole_cards, board = deal_multiway_hand(num_players)
+    stacks = [starting_stack] * num_players
+    folded = [False] * num_players
+
+    base_positions = ["UTG", "HJ", "CO", "BTN"]
+    positions = base_positions[:num_players - 2] + ["SB", "BB"]
+
+    committed = {i: 0 for i in range(num_players)}
+    committed[num_players - 2] = small_blind
+    committed[num_players - 1] = big_blind
+    stacks[num_players - 2] -= small_blind
+    stacks[num_players - 1] -= big_blind
+    pot = small_blind + big_blind
+    num_bets = 1
+
+    acting_order = list(range(num_players))
+    streets = [("preflop", []), ("flop", board[0:3]), ("turn", board[0:4]), ("river", board[0:5])]
+
+    for street_name, visible_board in streets:
+        active_players = [i for i in range(num_players) if not folded[i]]
+        if len(active_players) == 1:
+            break
+
+        if street_name == "preflop":
+            street_order = list(range(num_players))
+        else:
+            sb_seat = num_players - 2
+            street_order = [(sb_seat + i) % num_players for i in range(num_players)]
+
+        street_committed = {i: (committed[i] if street_name == "preflop" else 0) for i in range(num_players)}
+        winner, pot, stacks, folded, _ = run_multiway_street(
+            hole_cards, visible_board, pot, stacks, folded, decide_fns, positions,
+            street_order, street_committed, min_raise=big_blind * 2, num_bets=num_bets,
+        )
+        num_bets = 0
+        if winner is not None:
+            stacks[winner] += pot
+            profits = [stacks[i] - starting_stack for i in range(num_players)]
+            return profits, "folded_out"
+
+    still_in = [i for i in range(num_players) if not folded[i]]
+    if len(still_in) == 1:
+        stacks[still_in[0]] += pot
+    else:
+        winners = resolve_multiway_showdown(hole_cards, board, still_in)
+        share = pot // len(winners)
+        remainder = pot - share * len(winners)
+        for w in winners:
+            stacks[w] += share
+        stacks[winners[0]] += remainder
+
+    profits = [stacks[i] - starting_stack for i in range(num_players)]
+    print(f"DEBUG: folded={folded}, still_in={still_in}, pot={pot}, stacks={stacks}, starting_stack={starting_stack}")
+    profits = [stacks[i] - starting_stack for i in range(num_players)]
+    return profits, "showdown"
+
+def run_multiway_simulation(num_hands, num_players, decide_fns):
+    total_profits = [0] * num_players
+    for hand_num in range(num_hands):
+        profits, outcome = play_multiway_hand(decide_fns, num_players)
+        print(f"Hand {hand_num}: profits={profits}, outcome={outcome}")
+        assert abs(sum(profits)) < 0.01, f"Not zero-sum! profits={profits}"
+        for i in range(num_players):
+            total_profits[i] += profits[i]
+    return total_profits
+
+def resolve_multiway_showdown(hole_cards_list, board, still_in):
+    best_rank = None
+    winners = []
+    for i in still_in:
+        cards = [Card.new(c) for c in hole_cards_list[i]]
+        board_cards = [Card.new(c) for c in board]
+        rank = _showdown_evaluator.evaluate(board_cards, cards)
+        if best_rank is None or rank < best_rank:
+            best_rank = rank
+            winners = [i]
+        elif rank == best_rank:
+            winners.append(i)
+    return winners

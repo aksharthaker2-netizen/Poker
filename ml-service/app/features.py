@@ -71,3 +71,13 @@ def straight_possible(cards):
     if len(nums) < 2:
         return 0
     return int(nums[-1] - nums[0] <= 4)
+
+def map_position_label(position):
+    mapping = {
+        "button": "BTN",
+        "late": "CO",
+        "middle": "HJ",
+        "early": "UTG",
+        "blinds": "BB",
+    }
+    return mapping.get(position, position)
