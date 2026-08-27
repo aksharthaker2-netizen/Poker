@@ -7,6 +7,9 @@ import Game from './pages/Game';
 import Profile from './pages/Profile';
 import Leaderboard from './pages/Leaderboard';
 import Friends from './pages/Friends';
+import GameHistory from './pages/GameHistory';
+import RoomHistory from './pages/RoomHistory';
+import Achievements from './pages/Achievements';
 
 function RequireAuth({ children }) {
   const hasSession = Boolean(localStorage.getItem('accessToken'));
@@ -26,6 +29,9 @@ export default function App() {
         <Route path="/profile" element={protect(<Profile />)} />
         <Route path="/leaderboard" element={protect(<Leaderboard />)} />
         <Route path="/friends" element={protect(<Friends />)} />
+        <Route path="/games" element={protect(<GameHistory />)} />
+        <Route path="/rooms" element={protect(<RoomHistory />)} />
+        <Route path="/achievements" element={protect(<Achievements />)} />
       </Routes>
     </BrowserRouter>
   );

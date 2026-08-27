@@ -51,10 +51,10 @@ export default function Home() {
     navigate('/login');
   };
 
-  const handleCreate = async (settings) => {
+  const handleCreate = async (settings, requestedSeat) => {
     setLoading(true);
     try {
-      const room = await createRoom(username, settings);
+      const room = await createRoom(username, settings, requestedSeat);
       navigate(`/room/${room.id}`);
     } catch {
       // error already surfaced via useRoom's error state
@@ -83,12 +83,21 @@ export default function Home() {
             <h1 className="mb-1 text-3xl font-semibold">PokerAI</h1>
             <p className="text-sm text-[#8B9A94]">Playing as {username}</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <NavLink to="/friends" navigate={navigate}>
               Friends
             </NavLink>
             <NavLink to="/leaderboard" navigate={navigate}>
               Leaderboard
+            </NavLink>
+            <NavLink to="/achievements" navigate={navigate}>
+              Achievements
+            </NavLink>
+            <NavLink to="/games" navigate={navigate}>
+              Game history
+            </NavLink>
+            <NavLink to="/rooms" navigate={navigate}>
+              My rooms
             </NavLink>
             <NavLink to="/profile" navigate={navigate}>
               Profile
