@@ -12,7 +12,7 @@ def _counting_wrapper(*args, **kwargs):
 
 predictor.predict_postflop_action = _counting_wrapper
 
-NUM_HANDS = 2000
+NUM_HANDS = 10000
 BIG_BLIND = 10
 
 hero_total_profit = 0
