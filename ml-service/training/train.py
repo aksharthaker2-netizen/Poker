@@ -73,11 +73,15 @@ y_test_pf_encoded = pf_label_encoder.transform(y_test_pf)
 
 import numpy as np
 
+import os
+RAISE_WEIGHT = float(os.environ.get("RAISE_WEIGHT", 2.5))
+
 raise_encoded_value = list(pf_label_encoder.classes_).index("raise")
-sample_weights = np.where(y_train_pf_encoded == raise_encoded_value, 2.5, 1.0)
+sample_weights = np.where(y_train_pf_encoded == raise_encoded_value, RAISE_WEIGHT, 1.0)
 
 postflop_model = XGBClassifier(n_estimators=100, max_depth=6, random_state=42, eval_metric="mlogloss")
 postflop_model.fit(X_train_pf, y_train_pf_encoded, sample_weight=sample_weights)
+print(f"\n[Trained with RAISE_WEIGHT={RAISE_WEIGHT}]")
 
 pf_predictions = postflop_model.predict(X_test_pf)
 pf_accuracy = accuracy_score(y_test_pf_encoded, pf_predictions)
