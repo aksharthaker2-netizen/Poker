@@ -92,9 +92,17 @@ def analyze(req: AnalyzeRequest):
         if point.player_action == recommended:
             correct_count += 1
         else:
-            severity = {"fold": 0, "check": 0, "call": 1, "raise": 2}
-            gap = abs(severity.get(point.player_action, 1) - severity.get(recommended, 1))
-            estimated_ev_loss = gap * 1.5
+            real_ev_loss = None
+            if not point.community_cards:
+                strength = features.hand_strength(point.hole_cards, [])
+                real_ev_loss = predictor.get_real_ev_loss(strength, point.player_action, recommended)
+
+            if real_ev_loss is not None:
+                estimated_ev_loss = real_ev_loss
+            else:
+                severity = {"fold": 0, "check": 0, "call": 1, "raise": 2}
+                gap = abs(severity.get(point.player_action, 1) - severity.get(recommended, 1))
+                estimated_ev_loss = gap * 1.5
 
             mistakes.append(Mistake(
                 decision_point=i,
@@ -106,7 +114,6 @@ def analyze(req: AnalyzeRequest):
 
     accuracy_pct = (correct_count / len(req.hand_history) * 100) if req.hand_history else 0
     return AnalyzeResponse(accuracy_pct=round(accuracy_pct, 1), mistakes=mistakes)
-
 
 @app.get("/health")
 def health():

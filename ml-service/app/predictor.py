@@ -7,7 +7,25 @@ _model = joblib.load(MODEL_DIR / "xgboost_model.pkl")
 _label_encoder = joblib.load(MODEL_DIR / "label_encoder.pkl")
 
 ALL_POSITIONS = ["BB", "BTN", "CO", "HJ", "SB", "UTG"]
+import json
 
+with open(MODEL_DIR / "ev_lookup.json") as f:
+    _ev_lookup = json.load(f)
+
+_EV_BUCKETS = [(0.0, 0.2), (0.2, 0.4), (0.4, 0.6), (0.6, 0.8), (0.8, 1.0)]
+
+
+def get_real_ev_loss(hand_strength, player_action, recommended_action):
+    for low, high in _EV_BUCKETS:
+        if low <= hand_strength <= high:
+            bucket_key = f"{low if low > 0 else -0.001}-{high}"
+            bucket_data = _ev_lookup.get(bucket_key, {})
+            player_ev = bucket_data.get(player_action)
+            recommended_ev = bucket_data.get(recommended_action)
+            if player_ev is not None and recommended_ev is not None:
+                return round(recommended_ev - player_ev, 2)
+            return None
+    return None
 
 def predict_preflop_action(hand_strength, num_bets, pot_size, num_players, position):
     row = {
@@ -76,3 +94,19 @@ def predict_postflop_action(hole_cards, community_cards, pot_size, to_call, min_
         return "call", None
     else:
         return action, None
+
+import math
+
+def get_real_ev_loss(hand_strength, player_action, recommended_action):
+    for low, high in _EV_BUCKETS:
+        if low <= hand_strength <= high:
+            bucket_key = f"{low if low > 0 else -0.001}-{high}"
+            bucket_data = _ev_lookup.get(bucket_key, {})
+            player_ev = bucket_data.get(player_action)
+            recommended_ev = bucket_data.get(recommended_action)
+            if player_ev is None or recommended_ev is None:
+                return None
+            if math.isnan(player_ev) or math.isnan(recommended_ev):
+                return None
+            return round(recommended_ev - player_ev, 2)
+    return None
