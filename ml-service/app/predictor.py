@@ -110,3 +110,32 @@ def get_real_ev_loss(hand_strength, player_action, recommended_action):
                 return None
             return round(recommended_ev - player_ev, 2)
     return None
+
+import random as _rand
+
+_WORSE_ACTION = {
+    "raise": "call",
+    "call": "check",
+    "check": "fold",
+    "fold": "check",
+}
+
+
+def apply_mistake_rate(action, raise_amount, mistake_rate):
+    if _rand.random() < mistake_rate:
+        downgraded = _WORSE_ACTION.get(action, action)
+        new_raise_amount = raise_amount if downgraded == "raise" else None
+        return downgraded, new_raise_amount
+    return action, raise_amount
+
+RATING_TIERS = {
+    400: 0.55,
+    800: 0.35,
+    1200: 0.15,
+    1600: 0.0,
+}
+
+
+def predict_rated_action(base_action, base_raise_amount, bot_rating):
+    mistake_rate = RATING_TIERS.get(bot_rating, 0.0)
+    return apply_mistake_rate(base_action, base_raise_amount, mistake_rate)
