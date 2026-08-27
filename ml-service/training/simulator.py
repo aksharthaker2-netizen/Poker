@@ -346,24 +346,34 @@ def resolve_multiway_showdown(hole_cards_list, board, still_in):
             winners.append(i)
     return winners
 
-def play_multiway_hand(decide_fns, num_players, starting_stack=1000, small_blind=5, big_blind=10):
-    print("MARKER: NEW CODE RUNNING", flush=True)
+def play_multiway_hand(decide_fns, num_players, starting_stack=1000, small_blind=5, big_blind=10, sb_seat=None):
     hole_cards, board = deal_multiway_hand(num_players)
     stacks = [starting_stack] * num_players
     folded = [False] * num_players
 
-    base_positions = ["UTG", "HJ", "CO", "BTN"]
-    positions = base_positions[:num_players - 2] + ["SB", "BB"]
+    if sb_seat is None:
+        sb_seat = num_players - 2
+    bb_seat = (sb_seat + 1) % num_players
+
+    positions = ["UTG"] * num_players
+    positions[sb_seat] = "SB"
+    positions[bb_seat] = "BB"
+    other_labels = ["HJ", "CO", "BTN"]
+    label_idx = 0
+    for i in range(num_players):
+        if positions[i] == "UTG" and i != sb_seat and i != bb_seat:
+            if label_idx < len(other_labels):
+                positions[i] = other_labels[label_idx]
+                label_idx += 1
 
     committed = {i: 0 for i in range(num_players)}
-    committed[num_players - 2] = small_blind
-    committed[num_players - 1] = big_blind
-    stacks[num_players - 2] -= small_blind
-    stacks[num_players - 1] -= big_blind
+    committed[sb_seat] = small_blind
+    committed[bb_seat] = big_blind
+    stacks[sb_seat] -= small_blind
+    stacks[bb_seat] -= big_blind
     pot = small_blind + big_blind
     num_bets = 1
 
-    acting_order = list(range(num_players))
     streets = [("preflop", []), ("flop", board[0:3]), ("turn", board[0:4]), ("river", board[0:5])]
 
     for street_name, visible_board in streets:
@@ -372,9 +382,8 @@ def play_multiway_hand(decide_fns, num_players, starting_stack=1000, small_blind
             break
 
         if street_name == "preflop":
-            street_order = list(range(num_players))
+            street_order = [(bb_seat + 1 + i) % num_players for i in range(num_players)]
         else:
-            sb_seat = num_players - 2
             street_order = [(sb_seat + i) % num_players for i in range(num_players)]
 
         street_committed = {i: (committed[i] if street_name == "preflop" else 0) for i in range(num_players)}
@@ -400,15 +409,12 @@ def play_multiway_hand(decide_fns, num_players, starting_stack=1000, small_blind
         stacks[winners[0]] += remainder
 
     profits = [stacks[i] - starting_stack for i in range(num_players)]
-    print(f"DEBUG: folded={folded}, still_in={still_in}, pot={pot}, stacks={stacks}, starting_stack={starting_stack}")
-    profits = [stacks[i] - starting_stack for i in range(num_players)]
     return profits, "showdown"
 
-def run_multiway_simulation(num_hands, num_players, decide_fns):
+def run_multiway_simulation(num_hands, num_players, decide_fns, sb_seat=None):
     total_profits = [0] * num_players
     for hand_num in range(num_hands):
-        profits, outcome = play_multiway_hand(decide_fns, num_players)
-        print(f"Hand {hand_num}: profits={profits}, outcome={outcome}")
+        profits, outcome = play_multiway_hand(decide_fns, num_players, sb_seat=sb_seat)
         assert abs(sum(profits)) < 0.01, f"Not zero-sum! profits={profits}"
         for i in range(num_players):
             total_profits[i] += profits[i]
