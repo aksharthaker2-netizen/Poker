@@ -471,9 +471,25 @@ def make_rated_bot_decide(bot_rating):
     config = predictor.RATING_CONFIG.get(bot_rating, {"mistake_rate": 0, "noise_level": 0, "blend_weight": 0})
 
     def rated_decide(hole_cards, community_cards, pot_size, to_call, min_raise, num_bets, position, big_blind=10, is_ip=False, is_aggressor=False):
-        model_action, model_raise = xgboost_bot_decide(
-            hole_cards, community_cards, pot_size, to_call, min_raise, num_bets, position, big_blind, is_ip, is_aggressor
-        )
+        real_strength = features.hand_strength(hole_cards, community_cards)
+        noisy_strength = predictor.add_equity_noise(real_strength, config["noise_level"])
+
+        if not community_cards:
+            pot_size_bb = pot_size / big_blind
+            model_action = predictor.predict_preflop_action(
+                hand_strength=noisy_strength, num_bets=num_bets, pot_size=pot_size_bb,
+                num_players=2, position=position,
+            )
+            model_raise = min_raise if model_action == "raise" else None
+        else:
+            street_map = {3: "Flop", 4: "Turn", 5: "River"}
+            street = street_map.get(len(community_cards), "Flop")
+            model_action, model_raise = predictor.predict_postflop_action(
+                hole_cards, community_cards, pot_size, to_call, min_raise,
+                num_prior_bets=num_bets, is_hero_aggressor=is_aggressor, street=street, hero_is_ip=is_ip,
+                hand_strength_override=noisy_strength,
+            )
+
         heuristic_action, heuristic_raise = heuristic_bot_decide(
             hole_cards, community_cards, pot_size, to_call, min_raise, num_bets, position, big_blind
         )

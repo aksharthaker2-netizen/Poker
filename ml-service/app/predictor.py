@@ -55,8 +55,8 @@ _postflop_label_encoder = joblib.load(MODEL_DIR / "postflop_label_encoder.pkl")
 _raise_downgrade_count = [0]
 
 def predict_postflop_action(hole_cards, community_cards, pot_size, to_call, min_raise,
-                             num_prior_bets, is_hero_aggressor, street, hero_is_ip):
-    strength = features.hand_strength(hole_cards, community_cards)
+                             num_prior_bets, is_hero_aggressor, street, hero_is_ip, hand_strength_override=None):
+    strength = hand_strength_override if hand_strength_override is not None else features.hand_strength(hole_cards, community_cards)
     is_paired, flush_possible = features.board_texture(community_cards)
     straight_poss = features.straight_possible(community_cards)
     facing_bet_to_pot = (to_call / pot_size) if pot_size > 0 else 0
@@ -171,3 +171,10 @@ def get_real_postflop_ev_loss(hand_strength, player_action, recommended_action):
                 return None
             return round(recommended_ev - player_ev, 2)
     return None
+
+def add_equity_noise(hand_strength, noise_level):
+    if noise_level <= 0:
+        return hand_strength
+    noise = np.random.normal(0, noise_level)
+    noisy_strength = hand_strength + noise
+    return max(0.0, min(1.0, noisy_strength))
