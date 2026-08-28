@@ -3,7 +3,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent))
 from simulator import run_mixed_multiway_validation
 
-NUM_HANDS = 8000
+NUM_HANDS = 20000
 
 configs = [
     (3, {0}),
