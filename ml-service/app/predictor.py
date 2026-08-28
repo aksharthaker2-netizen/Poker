@@ -153,3 +153,21 @@ RATING_CONFIG = {
     1200: {"mistake_rate": 0.10, "noise_level": 0.08, "blend_weight": 0.10},
     1600: {"mistake_rate": 0.0, "noise_level": 0.0, "blend_weight": 0.0},
 }
+
+with open(MODEL_DIR / "postflop_ev_lookup.json") as f:
+    _postflop_ev_lookup = json.load(f)
+
+
+def get_real_postflop_ev_loss(hand_strength, player_action, recommended_action):
+    for low, high in _EV_BUCKETS:
+        if low <= hand_strength <= high:
+            bucket_key = f"{low if low > 0 else -0.001}-{high}"
+            bucket_data = _postflop_ev_lookup.get(bucket_key, {})
+            player_ev = bucket_data.get(player_action)
+            recommended_ev = bucket_data.get(recommended_action)
+            if player_ev is None or recommended_ev is None:
+                return None
+            if math.isnan(player_ev) or math.isnan(recommended_ev):
+                return None
+            return round(recommended_ev - player_ev, 2)
+    return None

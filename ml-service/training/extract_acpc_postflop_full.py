@@ -12,6 +12,9 @@ data_dir = Path(__file__).resolve().parent / "data" / "acpc_phh"
 def extract_postflop_records(hand):
     actions = hand.get("actions", [])
     blinds = hand.get("blinds_or_straddles")
+    results = hand.get("_results")
+    if not results or len(results) != 2:
+        return []
     if not blinds or len(blinds) != 2:
         return []
     big_blind = blinds[1]
@@ -29,6 +32,7 @@ def extract_postflop_records(hand):
         return []
     first_actor = non_deal_preview[0].split()[0]
     other_actor = "p2" if first_actor == "p1" else "p1"
+    actor_index = {"p1": 0, "p2": 1}
 
     committed = {first_actor: blinds[0], other_actor: blinds[1]}
     pot = blinds[0] + blinds[1]
@@ -84,6 +88,7 @@ def extract_postflop_records(hand):
                 continue
 
             row["action_label"] = label
+            row["profit_bb"] = results[actor_index[actor]] / big_blind
             records.append(row)
 
         if act_code == "cc":

@@ -101,6 +101,9 @@ def analyze(req: AnalyzeRequest):
             if not point.community_cards:
                 strength = features.hand_strength(point.hole_cards, [])
                 real_ev_loss = predictor.get_real_ev_loss(strength, point.player_action, recommended)
+            else:
+                strength = features.hand_strength(point.hole_cards, point.community_cards)
+                real_ev_loss = predictor.get_real_postflop_ev_loss(strength, point.player_action, recommended)
 
             if real_ev_loss is not None:
                 estimated_ev_loss = real_ev_loss
