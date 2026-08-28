@@ -137,7 +137,8 @@ RATING_TIERS = {
 
 
 def predict_rated_action(base_action, base_raise_amount, bot_rating):
-    mistake_rate = RATING_TIERS.get(bot_rating, 0.0)
+    resolved_rating = resolve_rating(bot_rating)
+    mistake_rate = RATING_TIERS.get(resolved_rating, 0.0)
     return apply_mistake_rate(base_action, base_raise_amount, mistake_rate)
 
 import numpy as np
@@ -153,7 +154,14 @@ RATING_CONFIG = {
     1140: {"mistake_rate": 0.10, "noise_level": 0.08, "blend_weight": 0.10},
     1600: {"mistake_rate": 0.0, "noise_level": 0.0, "blend_weight": 0.0},
 }
+LEGACY_RATING_ALIASES = {
+    800: 672,
+    1200: 1140,
+}
 
+
+def resolve_rating(bot_rating):
+    return LEGACY_RATING_ALIASES.get(bot_rating, bot_rating)
 with open(MODEL_DIR / "postflop_ev_lookup.json") as f:
     _postflop_ev_lookup = json.load(f)
 

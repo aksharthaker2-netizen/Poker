@@ -468,7 +468,8 @@ def run_multiway_simulation(num_hands, num_players, decide_fns, sb_seat=None):
     return total_profits
 
 def make_rated_bot_decide(bot_rating):
-    config = predictor.RATING_CONFIG.get(bot_rating, {"mistake_rate": 0, "noise_level": 0, "blend_weight": 0})
+    resolved_rating = predictor.resolve_rating(bot_rating)
+    config = predictor.RATING_CONFIG.get(resolved_rating, {"mistake_rate": 0, "noise_level": 0, "blend_weight": 0})
 
     def rated_decide(hole_cards, community_cards, pot_size, to_call, min_raise, num_bets, position, big_blind=10, is_ip=False, is_aggressor=False):
         real_strength = features.hand_strength(hole_cards, community_cards)
