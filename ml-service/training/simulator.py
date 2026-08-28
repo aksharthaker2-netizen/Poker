@@ -458,11 +458,21 @@ def run_multiway_simulation(num_hands, num_players, decide_fns, sb_seat=None):
     return total_profits
 
 def make_rated_bot_decide(bot_rating):
+    config = predictor.RATING_CONFIG.get(bot_rating, {"mistake_rate": 0, "noise_level": 0, "blend_weight": 0})
+
     def rated_decide(hole_cards, community_cards, pot_size, to_call, min_raise, num_bets, position, big_blind=10, is_ip=False, is_aggressor=False):
-        action, raise_amount = xgboost_bot_decide(
+        model_action, model_raise = xgboost_bot_decide(
             hole_cards, community_cards, pot_size, to_call, min_raise, num_bets, position, big_blind, is_ip, is_aggressor
         )
-        return predictor.predict_rated_action(action, raise_amount, bot_rating)
+        heuristic_action, heuristic_raise = heuristic_bot_decide(
+            hole_cards, community_cards, pot_size, to_call, min_raise, num_bets, position, big_blind
+        )
+        action, raise_amount = predictor.blend_with_heuristic(
+            model_action, model_raise, heuristic_action, heuristic_raise, config["blend_weight"]
+        )
+        action, raise_amount = predictor.apply_mistake_rate(action, raise_amount, config["mistake_rate"])
+        return action, raise_amount
+
     return rated_decide
 
 def run_seat_alternating_heads_up(num_hands, bot_a_fn, bot_b_fn, big_blind=10):
@@ -484,3 +494,4 @@ def run_seat_rotating_multiway(num_hands, num_players, decide_fns):
         for i in range(num_players):
             total_profits[i] += profits[i]
     return total_profits
+

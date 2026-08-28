@@ -81,3 +81,13 @@ def map_position_label(position):
         "blinds": "BB",
     }
     return mapping.get(position, position)
+
+import numpy as np
+
+
+def add_equity_noise(hand_strength, noise_level):
+    if noise_level <= 0:
+        return hand_strength
+    noise = np.random.normal(0, noise_level)
+    noisy_strength = hand_strength + noise
+    return max(0.0, min(1.0, noisy_strength))

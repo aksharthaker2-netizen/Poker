@@ -139,3 +139,17 @@ RATING_TIERS = {
 def predict_rated_action(base_action, base_raise_amount, bot_rating):
     mistake_rate = RATING_TIERS.get(bot_rating, 0.0)
     return apply_mistake_rate(base_action, base_raise_amount, mistake_rate)
+
+import numpy as np
+
+def blend_with_heuristic(model_action, model_raise, heuristic_action, heuristic_raise, blend_weight):
+    if np.random.random() < blend_weight:
+        return heuristic_action, heuristic_raise
+    return model_action, model_raise
+
+RATING_CONFIG = {
+    400: {"mistake_rate": 0.40, "noise_level": 0.25, "blend_weight": 0.50},
+    800: {"mistake_rate": 0.25, "noise_level": 0.15, "blend_weight": 0.30},
+    1200: {"mistake_rate": 0.10, "noise_level": 0.08, "blend_weight": 0.10},
+    1600: {"mistake_rate": 0.0, "noise_level": 0.0, "blend_weight": 0.0},
+}
