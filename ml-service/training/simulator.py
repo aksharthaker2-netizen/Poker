@@ -555,12 +555,15 @@ def run_rated_multiway_calibration(num_hands, num_players, seat_ratings):
     return total_profits
 
 def build_side_pots(total_contributed, still_in):
-    levels = sorted(set(total_contributed[i] for i in still_in))
+    all_players = list(total_contributed.keys())
+    levels = sorted(set(total_contributed[i] for i in all_players if total_contributed[i] > 0))
     pots = []
     previous_level = 0
     for level in levels:
-        contributors = [i for i in total_contributed if total_contributed[i] > previous_level]
-        layer_size = (level - previous_level) * len(contributors)
+        layer_size = 0
+        for i in all_players:
+            contribution = max(0, min(total_contributed[i], level) - previous_level)
+            layer_size += contribution
         eligible = [i for i in still_in if total_contributed[i] >= level]
         if layer_size > 0 and eligible:
             pots.append((layer_size, eligible))
