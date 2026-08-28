@@ -4,7 +4,7 @@ sys.path.append(str(Path(__file__).resolve().parent))
 from simulator import play_one_hand, make_rated_bot_decide
 
 NUM_HANDS = 2000
-RATINGS = [400, 800, 1200, 1600]
+RATINGS = [400, 672, 1140, 1600]
 
 for i, rating_a in enumerate(RATINGS):
     for rating_b in RATINGS[i+1:]:

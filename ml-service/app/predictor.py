@@ -130,8 +130,8 @@ def apply_mistake_rate(action, raise_amount, mistake_rate):
 
 RATING_TIERS = {
     400: 0.55,
-    800: 0.35,
-    1200: 0.15,
+    672: 0.35,
+    1140: 0.15,
     1600: 0.0,
 }
 
@@ -149,8 +149,8 @@ def blend_with_heuristic(model_action, model_raise, heuristic_action, heuristic_
 
 RATING_CONFIG = {
     400: {"mistake_rate": 0.40, "noise_level": 0.25, "blend_weight": 0.50},
-    800: {"mistake_rate": 0.25, "noise_level": 0.15, "blend_weight": 0.30},
-    1200: {"mistake_rate": 0.10, "noise_level": 0.08, "blend_weight": 0.10},
+    672: {"mistake_rate": 0.25, "noise_level": 0.15, "blend_weight": 0.30},
+    1140: {"mistake_rate": 0.10, "noise_level": 0.08, "blend_weight": 0.10},
     1600: {"mistake_rate": 0.0, "noise_level": 0.0, "blend_weight": 0.0},
 }
 
