@@ -495,3 +495,29 @@ def run_seat_rotating_multiway(num_hands, num_players, decide_fns):
             total_profits[i] += profits[i]
     return total_profits
 
+def run_mixed_multiway_validation(num_hands, num_players, xgboost_seats):
+    total_xgboost_profit = 0
+    total_heuristic_profit = 0
+
+    for hand_num in range(num_hands):
+        rotation = hand_num % num_players
+        decide_fns = []
+        for seat in range(num_players):
+            rotated_seat = (seat + rotation) % num_players
+            if rotated_seat in xgboost_seats:
+                decide_fns.append(xgboost_bot_decide)
+            else:
+                decide_fns.append(heuristic_bot_decide)
+
+        sb_seat = hand_num % num_players
+        profits, outcome = play_multiway_hand(decide_fns, num_players, sb_seat=sb_seat)
+        assert abs(sum(profits)) < 0.01, f"Not zero-sum! profits={profits}"
+
+        for seat in range(num_players):
+            rotated_seat = (seat + rotation) % num_players
+            if rotated_seat in xgboost_seats:
+                total_xgboost_profit += profits[seat]
+            else:
+                total_heuristic_profit += profits[seat]
+
+    return total_xgboost_profit, total_heuristic_profit
