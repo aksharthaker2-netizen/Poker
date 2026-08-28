@@ -28,7 +28,7 @@ import decision_engine
 import predictor
 
 
-def xgboost_bot_decide(hole_cards, community_cards, pot_size, to_call, min_raise, num_bets, position, big_blind=10):
+def xgboost_bot_decide(hole_cards, community_cards, pot_size, to_call, min_raise, num_bets, position, big_blind=10, is_ip=False, is_aggressor=False):
     if not community_cards:
         pot_size_bb = pot_size / big_blind
         action = predictor.predict_preflop_action(
@@ -44,18 +44,17 @@ def xgboost_bot_decide(hole_cards, community_cards, pot_size, to_call, min_raise
     street = street_map.get(len(community_cards), "Flop")
     return predictor.predict_postflop_action(
         hole_cards, community_cards, pot_size, to_call, min_raise,
-        num_prior_bets=num_bets, is_hero_aggressor=False, street=street, hero_is_ip=False,
+        num_prior_bets=num_bets, is_hero_aggressor=is_aggressor, street=street, hero_is_ip=is_ip,
     )
 
-
-def heuristic_bot_decide(hole_cards, community_cards, pot_size, to_call, min_raise, num_bets=0, position=None, big_blind=10):
+def heuristic_bot_decide(hole_cards, community_cards, pot_size, to_call, min_raise, num_bets=0, position=None, big_blind=10, is_ip=False, is_aggressor=False):
     feats = features.build_feature_vector(hole_cards, community_cards, pot_size, to_call)
     result = decision_engine.decide(feats, min_raise)
     return result["action"], result["raise_amount"]
 
 def run_betting_street(hero_hole, villain_hole, board, pot, hero_stack, villain_stack,
                         hero_decide_fn, villain_decide_fn, num_bets, min_raise,
-                        hero_position, villain_position, big_blind, hero_acts_first=True):
+                        hero_position, villain_position, big_blind, hero_acts_first=True, aggressor=None):
     to_call = 0
 
     if hero_acts_first:
@@ -65,13 +64,14 @@ def run_betting_street(hero_hole, villain_hole, board, pot, hero_stack, villain_
         first_fn, first_hole, first_pos = villain_decide_fn, villain_hole, villain_position
         second_fn, second_hole, second_pos = hero_decide_fn, hero_hole, hero_position
 
-    first_action, first_raise = first_fn(first_hole, board, pot, to_call, min_raise, num_bets, first_pos, big_blind)
-
-    def apply_first_actor_fold():
-        return ("villain", pot, hero_stack, villain_stack) if hero_acts_first else ("hero", pot, hero_stack, villain_stack)
+    first_action, first_raise = first_fn(
+        first_hole, board, pot, to_call, min_raise, num_bets, first_pos, big_blind,
+        is_ip=(first_pos == "BB"), is_aggressor=(aggressor == first_pos),
+    )
 
     if first_action == "fold":
-        return apply_first_actor_fold()
+        winner = "villain" if hero_acts_first else "hero"
+        return winner, pot, hero_stack, villain_stack, aggressor
 
     if first_action == "raise":
         bet = min(first_raise, (hero_stack if hero_acts_first else villain_stack))
@@ -80,21 +80,30 @@ def run_betting_street(hero_hole, villain_hole, board, pot, hero_stack, villain_
             hero_stack -= bet
         else:
             villain_stack -= bet
+        new_aggressor = first_pos
 
-        second_action, _ = second_fn(second_hole, board, pot, bet, min_raise, num_bets + 1, second_pos, big_blind)
+        second_action, _ = second_fn(
+            second_hole, board, pot, bet, min_raise, num_bets + 1, second_pos, big_blind,
+            is_ip=(second_pos == "BB"), is_aggressor=(new_aggressor == second_pos),
+        )
         if second_action == "fold":
-            return ("hero", pot, hero_stack, villain_stack) if hero_acts_first else ("villain", pot, hero_stack, villain_stack)
+            winner = "hero" if hero_acts_first else "villain"
+            return winner, pot, hero_stack, villain_stack, new_aggressor
         call_amount = min(bet, (villain_stack if hero_acts_first else hero_stack))
         pot += call_amount
         if hero_acts_first:
             villain_stack -= call_amount
         else:
             hero_stack -= call_amount
-        return None, pot, hero_stack, villain_stack
+        return None, pot, hero_stack, villain_stack, new_aggressor
 
-    second_action, second_raise = second_fn(second_hole, board, pot, to_call, min_raise, num_bets, second_pos, big_blind)
+    second_action, second_raise = second_fn(
+        second_hole, board, pot, to_call, min_raise, num_bets, second_pos, big_blind,
+        is_ip=(second_pos == "BB"), is_aggressor=(aggressor == second_pos),
+    )
     if second_action == "fold":
-        return ("hero", pot, hero_stack, villain_stack) if hero_acts_first else ("villain", pot, hero_stack, villain_stack)
+        winner = "hero" if hero_acts_first else "villain"
+        return winner, pot, hero_stack, villain_stack, aggressor
     if second_action == "raise":
         bet = min(second_raise, (villain_stack if hero_acts_first else hero_stack))
         pot += bet
@@ -102,16 +111,24 @@ def run_betting_street(hero_hole, villain_hole, board, pot, hero_stack, villain_
             villain_stack -= bet
         else:
             hero_stack -= bet
-        third_action, _ = first_fn(first_hole, board, pot, bet, min_raise, num_bets + 1, first_pos, big_blind)
+        new_aggressor = second_pos
+
+        third_action, _ = first_fn(
+            first_hole, board, pot, bet, min_raise, num_bets + 1, first_pos, big_blind,
+            is_ip=(first_pos == "BB"), is_aggressor=(new_aggressor == first_pos),
+        )
         if third_action == "fold":
-            return ("villain", pot, hero_stack, villain_stack) if hero_acts_first else ("hero", pot, hero_stack, villain_stack)
+            winner = "villain" if hero_acts_first else "hero"
+            return winner, pot, hero_stack, villain_stack, new_aggressor
         call_amount = min(bet, (hero_stack if hero_acts_first else villain_stack))
         pot += call_amount
         if hero_acts_first:
             hero_stack -= call_amount
         else:
             villain_stack -= call_amount
-    return None, pot, hero_stack, villain_stack
+        return None, pot, hero_stack, villain_stack, new_aggressor
+
+    return None, pot, hero_stack, villain_stack, aggressor
 def resolve_showdown(hero_hole, villain_hole, board):
     hero_cards = [Card.new(c) for c in hero_hole]
     villain_cards = [Card.new(c) for c in villain_hole]
@@ -142,8 +159,9 @@ def play_one_hand(hero_decide_fn, villain_decide_fn, starting_stack=1000, small_
         ("river", board[0:5]),
     ]
 
+    aggressor = None
     for street_name, visible_board in streets:
-        winner, pot, hero_stack, villain_stack = run_betting_street(
+        winner, pot, hero_stack, villain_stack, aggressor = run_betting_street(
             hero_hole, villain_hole, visible_board, pot,
             hero_stack, villain_stack,
             hero_decide_fn, villain_decide_fn,
@@ -151,6 +169,7 @@ def play_one_hand(hero_decide_fn, villain_decide_fn, starting_stack=1000, small_
             hero_position="SB", villain_position="BB",
             big_blind=big_blind,
             hero_acts_first=(street_name == "preflop"),
+            aggressor=aggressor,
         )
         if winner is not None:
             if winner == "hero":
@@ -439,9 +458,9 @@ def run_multiway_simulation(num_hands, num_players, decide_fns, sb_seat=None):
     return total_profits
 
 def make_rated_bot_decide(bot_rating):
-    def rated_decide(hole_cards, community_cards, pot_size, to_call, min_raise, num_bets, position, big_blind=10):
+    def rated_decide(hole_cards, community_cards, pot_size, to_call, min_raise, num_bets, position, big_blind=10, is_ip=False, is_aggressor=False):
         action, raise_amount = xgboost_bot_decide(
-            hole_cards, community_cards, pot_size, to_call, min_raise, num_bets, position, big_blind
+            hole_cards, community_cards, pot_size, to_call, min_raise, num_bets, position, big_blind, is_ip, is_aggressor
         )
         return predictor.predict_rated_action(action, raise_amount, bot_rating)
     return rated_decide

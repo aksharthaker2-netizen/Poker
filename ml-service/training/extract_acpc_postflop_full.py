@@ -32,6 +32,7 @@ def extract_postflop_records(hand):
 
     committed = {first_actor: blinds[0], other_actor: blinds[1]}
     pot = blinds[0] + blinds[1]
+    in_position_player = other_actor
     board = []
     street = "Preflop"
     num_bets_this_street = 0
@@ -69,8 +70,8 @@ def extract_postflop_records(hand):
                 "street_Flop": int(street == "Flop"),
                 "street_River": int(street == "River"),
                 "street_Turn": int(street == "Turn"),
-                "pos_IP": 0,
-                "pos_OOP": 1,
+                "pos_IP": int(actor == in_position_player),
+                "pos_OOP": int(actor != in_position_player),
             }
 
             if act_code == "f":
