@@ -20,6 +20,7 @@ env/
 *.pt
 *.onnx
 *.pkl
+!ml-service/app/model/*.pkl
 /ml-service/training/data/
 # =====================================
 # Environment Secrets (Crucial)
