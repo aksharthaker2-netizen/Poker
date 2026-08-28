@@ -410,6 +410,9 @@ def play_multiway_hand(decide_fns, num_players, starting_stack=1000, small_blind
     stacks[bb_seat] -= big_blind
     pot = small_blind + big_blind
     num_bets = 1
+    total_contributed = {sb_seat: small_blind, bb_seat: big_blind}
+    for i in range(num_players):
+        total_contributed.setdefault(i, 0)
 
     streets = [("preflop", []), ("flop", board[0:3]), ("turn", board[0:4]), ("river", board[0:5])]
 
@@ -424,10 +427,15 @@ def play_multiway_hand(decide_fns, num_players, starting_stack=1000, small_blind
             street_order = [(sb_seat + i) % num_players for i in range(num_players)]
 
         street_committed = {i: (committed[i] if street_name == "preflop" else 0) for i in range(num_players)}
-        winner, pot, stacks, folded, _ = run_multiway_street(
+        winner, pot, stacks, folded, street_final_committed = run_multiway_street(
             hole_cards, visible_board, pot, stacks, folded, decide_fns, positions,
             street_order, street_committed, min_raise=big_blind * 2, num_bets=num_bets,
         )
+        if street_name == "preflop":
+            total_contributed = dict(street_final_committed)
+        else:
+            for i in range(num_players):
+                total_contributed[i] += street_final_committed[i]
         num_bets = 0
         if winner is not None:
             stacks[winner] += pot
@@ -438,12 +446,14 @@ def play_multiway_hand(decide_fns, num_players, starting_stack=1000, small_blind
     if len(still_in) == 1:
         stacks[still_in[0]] += pot
     else:
-        winners = resolve_multiway_showdown(hole_cards, board, still_in)
-        share = pot // len(winners)
-        remainder = pot - share * len(winners)
-        for w in winners:
-            stacks[w] += share
-        stacks[winners[0]] += remainder
+        pots = build_side_pots(total_contributed, still_in)
+        for pot_amount, eligible_seats in pots:
+            winners = resolve_multiway_showdown(hole_cards, board, eligible_seats)
+            share = pot_amount // len(winners)
+            remainder = pot_amount - share * len(winners)
+            for w in winners:
+                stacks[w] += share
+            stacks[winners[0]] += remainder
 
     profits = [stacks[i] - starting_stack for i in range(num_players)]
     return profits, "showdown"
@@ -543,3 +553,16 @@ def run_rated_multiway_calibration(num_hands, num_players, seat_ratings):
             total_profits[rotated_ratings[seat]] += profits[seat]
 
     return total_profits
+
+def build_side_pots(total_contributed, still_in):
+    levels = sorted(set(total_contributed[i] for i in still_in))
+    pots = []
+    previous_level = 0
+    for level in levels:
+        contributors = [i for i in total_contributed if total_contributed[i] > previous_level]
+        layer_size = (level - previous_level) * len(contributors)
+        eligible = [i for i in still_in if total_contributed[i] >= level]
+        if layer_size > 0 and eligible:
+            pots.append((layer_size, eligible))
+        previous_level = level
+    return pots
