@@ -414,3 +414,11 @@ def run_multiway_simulation(num_hands, num_players, decide_fns, sb_seat=None):
         for i in range(num_players):
             total_profits[i] += profits[i]
     return total_profits
+
+def make_rated_bot_decide(bot_rating):
+    def rated_decide(hole_cards, community_cards, pot_size, to_call, min_raise, num_bets, position, big_blind=10):
+        action, raise_amount = xgboost_bot_decide(
+            hole_cards, community_cards, pot_size, to_call, min_raise, num_bets, position, big_blind
+        )
+        return predictor.predict_rated_action(action, raise_amount, bot_rating)
+    return rated_decide

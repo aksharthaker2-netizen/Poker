@@ -115,7 +115,7 @@ import random as _rand
 
 _WORSE_ACTION = {
     "raise": "call",
-    "call": "check",
+    "call": "fold",
     "check": "fold",
     "fold": "check",
 }
