@@ -2,6 +2,8 @@ import random
 random.seed(42)
 RANKS = "23456789TJQKA"
 SUITS = "shdc"
+from treys import Card, Evaluator
+_showdown_evaluator = Evaluator()
 
 
 def new_shuffled_deck():
@@ -53,43 +55,63 @@ def heuristic_bot_decide(hole_cards, community_cards, pot_size, to_call, min_rai
 
 def run_betting_street(hero_hole, villain_hole, board, pot, hero_stack, villain_stack,
                         hero_decide_fn, villain_decide_fn, num_bets, min_raise,
-                        hero_position, villain_position, big_blind):
+                        hero_position, villain_position, big_blind, hero_acts_first=True):
     to_call = 0
-    hero_action, hero_raise = hero_decide_fn(hero_hole, board, pot, to_call, min_raise, num_bets, hero_position, big_blind)
-    if hero_action == "fold":
-        return "villain", pot, hero_stack, villain_stack
-    if hero_action == "raise":
-        bet = min(hero_raise, hero_stack)
+
+    if hero_acts_first:
+        first_fn, first_hole, first_pos = hero_decide_fn, hero_hole, hero_position
+        second_fn, second_hole, second_pos = villain_decide_fn, villain_hole, villain_position
+    else:
+        first_fn, first_hole, first_pos = villain_decide_fn, villain_hole, villain_position
+        second_fn, second_hole, second_pos = hero_decide_fn, hero_hole, hero_position
+
+    first_action, first_raise = first_fn(first_hole, board, pot, to_call, min_raise, num_bets, first_pos, big_blind)
+
+    def apply_first_actor_fold():
+        return ("villain", pot, hero_stack, villain_stack) if hero_acts_first else ("hero", pot, hero_stack, villain_stack)
+
+    if first_action == "fold":
+        return apply_first_actor_fold()
+
+    if first_action == "raise":
+        bet = min(first_raise, (hero_stack if hero_acts_first else villain_stack))
         pot += bet
-        hero_stack -= bet
-        villain_action, _ = villain_decide_fn(villain_hole, board, pot, bet, min_raise, num_bets + 1, villain_position, big_blind)
-        if villain_action == "fold":
-            return "hero", pot, hero_stack, villain_stack
-        call_amount = min(bet, villain_stack)
+        if hero_acts_first:
+            hero_stack -= bet
+        else:
+            villain_stack -= bet
+
+        second_action, _ = second_fn(second_hole, board, pot, bet, min_raise, num_bets + 1, second_pos, big_blind)
+        if second_action == "fold":
+            return ("hero", pot, hero_stack, villain_stack) if hero_acts_first else ("villain", pot, hero_stack, villain_stack)
+        call_amount = min(bet, (villain_stack if hero_acts_first else hero_stack))
         pot += call_amount
-        villain_stack -= call_amount
+        if hero_acts_first:
+            villain_stack -= call_amount
+        else:
+            hero_stack -= call_amount
         return None, pot, hero_stack, villain_stack
 
-    villain_action, villain_raise = villain_decide_fn(villain_hole, board, pot, to_call, min_raise, num_bets, villain_position, big_blind)
-    if villain_action == "fold":
-        return "hero", pot, hero_stack, villain_stack
-    if villain_action == "raise":
-        bet = min(villain_raise, villain_stack)
+    second_action, second_raise = second_fn(second_hole, board, pot, to_call, min_raise, num_bets, second_pos, big_blind)
+    if second_action == "fold":
+        return ("hero", pot, hero_stack, villain_stack) if hero_acts_first else ("villain", pot, hero_stack, villain_stack)
+    if second_action == "raise":
+        bet = min(second_raise, (villain_stack if hero_acts_first else hero_stack))
         pot += bet
-        villain_stack -= bet
-        hero_action2, _ = hero_decide_fn(hero_hole, board, pot, bet, min_raise, num_bets + 1, hero_position, big_blind)
-        if hero_action2 == "fold":
-            return "villain", pot, hero_stack, villain_stack
-        call_amount = min(bet, hero_stack)
+        if hero_acts_first:
+            villain_stack -= bet
+        else:
+            hero_stack -= bet
+        third_action, _ = first_fn(first_hole, board, pot, bet, min_raise, num_bets + 1, first_pos, big_blind)
+        if third_action == "fold":
+            return ("villain", pot, hero_stack, villain_stack) if hero_acts_first else ("hero", pot, hero_stack, villain_stack)
+        call_amount = min(bet, (hero_stack if hero_acts_first else villain_stack))
         pot += call_amount
-        hero_stack -= call_amount
+        if hero_acts_first:
+            hero_stack -= call_amount
+        else:
+            villain_stack -= call_amount
     return None, pot, hero_stack, villain_stack
-
-from treys import Card, Evaluator
-
-_showdown_evaluator = Evaluator()
-
-
 def resolve_showdown(hero_hole, villain_hole, board):
     hero_cards = [Card.new(c) for c in hero_hole]
     villain_cards = [Card.new(c) for c in villain_hole]
@@ -128,6 +150,7 @@ def play_one_hand(hero_decide_fn, villain_decide_fn, starting_stack=1000, small_
             num_bets, min_raise=big_blind * 2,
             hero_position="SB", villain_position="BB",
             big_blind=big_blind,
+            hero_acts_first=(street_name == "preflop"),
         )
         if winner is not None:
             if winner == "hero":
