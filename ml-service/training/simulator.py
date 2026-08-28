@@ -455,3 +455,13 @@ def run_seat_alternating_heads_up(num_hands, bot_a_fn, bot_b_fn, big_blind=10):
         profit_b, profit_a, outcome = play_one_hand(bot_b_fn, bot_a_fn, big_blind=big_blind)
         total_a_profit += profit_a
     return total_a_profit
+
+def run_seat_rotating_multiway(num_hands, num_players, decide_fns):
+    total_profits = [0] * num_players
+    for hand_num in range(num_hands):
+        sb_seat = hand_num % num_players
+        profits, outcome = play_multiway_hand(decide_fns, num_players, sb_seat=sb_seat)
+        assert abs(sum(profits)) < 0.01, f"Not zero-sum! profits={profits}"
+        for i in range(num_players):
+            total_profits[i] += profits[i]
+    return total_profits
