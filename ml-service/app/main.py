@@ -15,7 +15,7 @@ app = FastAPI(title="Poker ML Service", version="0.1.0")
 def decide(req: DecideRequest):
     if not req.community_cards:
         # ASSUMPTION: big blind = 10 chips, hardcoded. If the real game supports
-        # variable blind structures, this needs to come from the request instead
+        # variable blind structures, this needs to come from the request instead.
         pot_size_bb = req.pot_size / 10
         action = predictor.predict_preflop_action(
             hand_strength=features.hand_strength(req.hole_cards, []),
@@ -25,15 +25,18 @@ def decide(req: DecideRequest):
             position=features.map_position_label(req.position),
         )
         raise_amount = req.min_raise if action == "raise" else None
-        return DecideResponse(action=action, raise_amount=raise_amount)
+    else:
+        street_map = {3: "Flop", 4: "Turn", 5: "River"}
+        street = street_map.get(len(req.community_cards), "Flop")
+        action, raise_amount = predictor.predict_postflop_action(
+            req.hole_cards, req.community_cards, req.pot_size, req.to_call, req.min_raise,
+            num_prior_bets=len(req.action_history), is_hero_aggressor=False, street=street,
+            hero_is_ip=False,
+        )
 
-    street_map = {3: "Flop", 4: "Turn", 5: "River"}
-    street = street_map.get(len(req.community_cards), "Flop")
-    action, raise_amount = predictor.predict_postflop_action(
-        req.hole_cards, req.community_cards, req.pot_size, req.to_call, req.min_raise,
-        num_prior_bets=len(req.action_history), is_hero_aggressor=False, street=street,
-        hero_is_ip=False,
-    )
+    if req.bot_rating is not None:
+        action, raise_amount = predictor.predict_rated_action(action, raise_amount, req.bot_rating)
+
     return DecideResponse(action=action, raise_amount=raise_amount)
 
 @app.post("/hint", response_model=HintResponse)
