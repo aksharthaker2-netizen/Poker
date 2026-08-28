@@ -18,11 +18,18 @@ BIG_BLIND = 10
 hero_total_profit = 0
 hero_folds = 0
 
-for i in range(NUM_HANDS):
+for i in range(NUM_HANDS // 2):
     hero_profit, villain_profit, outcome = play_one_hand(xgboost_bot_decide, heuristic_bot_decide, big_blind=BIG_BLIND)
     assert abs(hero_profit + villain_profit) < 0.01, f"Not zero-sum! hero={hero_profit}, villain={villain_profit}"
     hero_total_profit += hero_profit
     if outcome == "hero_folded":
+        hero_folds += 1
+
+for i in range(NUM_HANDS - NUM_HANDS // 2):
+    villain_profit, hero_profit, outcome = play_one_hand(heuristic_bot_decide, xgboost_bot_decide, big_blind=BIG_BLIND)
+    assert abs(hero_profit + villain_profit) < 0.01, f"Not zero-sum! hero={hero_profit}, villain={villain_profit}"
+    hero_total_profit += hero_profit
+    if outcome == "villain_folded":
         hero_folds += 1
 
 print(f"predict_postflop_action was called {postflop_call_count[0]} times out of {NUM_HANDS} hands")

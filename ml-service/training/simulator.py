@@ -445,3 +445,13 @@ def make_rated_bot_decide(bot_rating):
         )
         return predictor.predict_rated_action(action, raise_amount, bot_rating)
     return rated_decide
+
+def run_seat_alternating_heads_up(num_hands, bot_a_fn, bot_b_fn, big_blind=10):
+    total_a_profit = 0
+    for _ in range(num_hands // 2):
+        profit_a, profit_b, outcome = play_one_hand(bot_a_fn, bot_b_fn, big_blind=big_blind)
+        total_a_profit += profit_a
+    for _ in range(num_hands - num_hands // 2):
+        profit_b, profit_a, outcome = play_one_hand(bot_b_fn, bot_a_fn, big_blind=big_blind)
+        total_a_profit += profit_a
+    return total_a_profit
