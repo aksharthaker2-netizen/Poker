@@ -102,3 +102,11 @@ def determine_aggressor_from_history(action_history, hero_seat_label="bot_seat")
 
 def determine_is_in_position(mapped_position):
     return mapped_position in ("BTN", "CO", "BB")
+
+def count_real_raises(action_history):
+    count = 0
+    for action_str in action_history:
+        parts = action_str.split(":")
+        if len(parts) >= 2 and parts[1] == "raise":
+            count += 1
+    return count

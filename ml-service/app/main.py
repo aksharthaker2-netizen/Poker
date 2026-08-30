@@ -19,7 +19,7 @@ def decide(req: DecideRequest):
         pot_size_bb = req.pot_size / 10
         action = predictor.predict_preflop_action(
             hand_strength=features.hand_strength(req.hole_cards, []),
-            num_bets=len(req.action_history) or 1,
+            num_bets=features.count_real_raises(req.action_history) or 1,
             pot_size=pot_size_bb,
             num_players=req.num_active_players,
             position=features.map_position_label(req.position),
@@ -31,7 +31,7 @@ def decide(req: DecideRequest):
         mapped_position = features.map_position_label(req.position)
         action, raise_amount = predictor.predict_postflop_action(
             req.hole_cards, req.community_cards, req.pot_size, req.to_call, req.min_raise,
-            num_prior_bets=len(req.action_history),
+            num_prior_bets=features.count_real_raises(req.action_history),
             is_hero_aggressor=features.determine_aggressor_from_history(req.action_history),
             street=street,
             hero_is_ip=features.determine_is_in_position(mapped_position),
