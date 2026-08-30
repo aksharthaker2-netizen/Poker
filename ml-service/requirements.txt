@@ -5,6 +5,5 @@ treys==0.1.8
 pandas==2.2.3
 scikit-learn==1.5.2
 xgboost==2.1.1
-lightgbm==4.5.0
-catboost==1.2.7
 joblib==1.4.2
+remotezip==2.0.0

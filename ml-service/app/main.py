@@ -39,8 +39,15 @@ def decide(req: DecideRequest):
 
     if req.bot_rating is not None:
         action, raise_amount = predictor.predict_rated_action(action, raise_amount, req.bot_rating)
+    if action == "raise":
+        bot_stack = req.stack_sizes.get("bot_seat", raise_amount)
+        if bot_stack <= 0:
+            action, raise_amount = "call", None
+        else:
+            raise_amount = min(raise_amount, bot_stack)
 
     return DecideResponse(action=action, raise_amount=raise_amount)
+
 @app.post("/hint", response_model=HintResponse)
 def hint(req: HintRequest):
     if not req.community_cards:
@@ -68,7 +75,14 @@ def hint(req: HintRequest):
         facing_bet_to_pot = req.to_call / req.pot_size if req.pot_size > 0 else 0
         reason = explain.generate_reason(action, strength, facing_bet_to_pot, False, req.to_call)
 
+    if action == "raise":
+        bot_stack = req.stack_sizes.get("bot_seat", raise_amount)
+        if bot_stack <= 0:
+            action, raise_amount = "call", None
+        else:
+            raise_amount = min(raise_amount, bot_stack)
     return HintResponse(suggested_action=action, suggested_raise_amount=raise_amount, reason=reason)
+
 
 @app.post("/analyze", response_model=AnalyzeResponse)
 def analyze(req: AnalyzeRequest):
