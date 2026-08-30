@@ -28,17 +28,19 @@ def decide(req: DecideRequest):
     else:
         street_map = {3: "Flop", 4: "Turn", 5: "River"}
         street = street_map.get(len(req.community_cards), "Flop")
+        mapped_position = features.map_position_label(req.position)
         action, raise_amount = predictor.predict_postflop_action(
             req.hole_cards, req.community_cards, req.pot_size, req.to_call, req.min_raise,
-            num_prior_bets=len(req.action_history), is_hero_aggressor=False, street=street,
-            hero_is_ip=False,
+            num_prior_bets=len(req.action_history),
+            is_hero_aggressor=features.determine_aggressor_from_history(req.action_history),
+            street=street,
+            hero_is_ip=features.determine_is_in_position(mapped_position),
         )
 
     if req.bot_rating is not None:
         action, raise_amount = predictor.predict_rated_action(action, raise_amount, req.bot_rating)
 
     return DecideResponse(action=action, raise_amount=raise_amount)
-
 @app.post("/hint", response_model=HintResponse)
 def hint(req: HintRequest):
     if not req.community_cards:

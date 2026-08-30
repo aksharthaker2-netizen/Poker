@@ -91,3 +91,14 @@ def add_equity_noise(hand_strength, noise_level):
     noise = np.random.normal(0, noise_level)
     noisy_strength = hand_strength + noise
     return max(0.0, min(1.0, noisy_strength))
+
+def determine_aggressor_from_history(action_history, hero_seat_label="bot_seat"):
+    last_raiser = None
+    for action_str in action_history:
+        parts = action_str.split(":")
+        if len(parts) >= 2 and parts[1] == "raise":
+            last_raiser = parts[0]
+    return last_raiser == hero_seat_label
+
+def determine_is_in_position(mapped_position):
+    return mapped_position in ("BTN", "CO", "BB")
