@@ -30,6 +30,21 @@ export const useGameStore = create((set) => ({
 
   setMyHand: (holeCards) => set({ myHoleCards: holeCards }),
 
+  /**
+   * Optimistically patches a player's chip count locally after a
+   * successful REBUY ack, without waiting for the next real
+   * GAME_STATE_UPDATED broadcast (which only arrives once the next
+   * hand/action actually happens — could be several seconds away via
+   * scheduleNextHand's delay). Only updates them if they're already in
+   * the local `players` array; if they'd already been dropped from
+   * game.players by a previous hand's busted-filter, the true broadcast
+   * will bring them back — this is a display nicety, not a source of truth.
+   */
+  patchPlayerChips: (userId, chips) =>
+    set((state) => ({
+      players: state.players.map((p) => (p.id === userId ? { ...p, chips } : p))
+    })),
+
   applyGameStateUpdate: (payload) =>
     set({
       gameState: payload.state,

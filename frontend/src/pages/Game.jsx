@@ -28,11 +28,14 @@ export default function Game() {
     showdownResults,
     revealedHands,
     setMyHand,
+    patchPlayerChips,
     applyGameStateUpdate
   } = useGameStore();
 
   const [actionError, setActionError] = useState(null);
   const [gameEndedReason, setGameEndedReason] = useState(null);
+  const [rebuying, setRebuying] = useState(false);
+  const [rebuyError, setRebuyError] = useState(null);
 
   useEffect(() => {
     if (!socket) return;
@@ -101,6 +104,27 @@ export default function Game() {
     }
   };
 
+  const handleRebuy = async () => {
+    setRebuying(true);
+    setRebuyError(null);
+    try {
+      const res = await emitWithAck('REBUY', { roomId });
+      // Patch locally right away rather than waiting for the next real
+      // GAME_STATE_UPDATED broadcast, which could be several seconds out
+      // (see gameStore.patchPlayerChips's doc comment).
+      patchPlayerChips(userId, res.newChips);
+    } catch (err) {
+      setRebuyError(err.message);
+    } finally {
+      setRebuying(false);
+    }
+  };
+
+  const myChips = players.find((p) => p.id === userId)?.chips ?? room.seats.find((s) => s && s.id === userId)?.chips;
+  // Only meaningful once a game has actually started — before that,
+  // everyone's chips equal the room's startingChips, never 0.
+  const isBustedOut = room.status === 'PLAYING' && myChips === 0;
+
   if (!room) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#0B0F10] text-[#8B9A94]">
@@ -156,6 +180,21 @@ export default function Game() {
           >
             Back to waiting room
           </button>
+        </div>
+      )}
+
+      {isBustedOut && !gameEndedReason && (
+        <div className="mx-auto mt-6 flex max-w-md flex-col items-center gap-2 rounded-lg border border-[#B23A2E]/40 bg-[#B23A2E]/5 p-4 text-center">
+          <p className="text-sm text-[#EDEAE3]">You're out of chips.</p>
+          {rebuyError && <p className="text-xs text-[#B23A2E]">{rebuyError}</p>}
+          <button
+            onClick={handleRebuy}
+            disabled={rebuying}
+            className="rounded bg-[#D4AF37] px-4 py-2 text-sm font-medium text-[#0B0F10] transition hover:brightness-110 disabled:opacity-50"
+          >
+            {rebuying ? 'Rebuying…' : `Rebuy for ${room.settings?.startingChips ?? 1000} chips`}
+          </button>
+          <p className="text-xs text-[#5A6B64]">You'll be dealt back in from the next hand.</p>
         </div>
       )}
     </div>

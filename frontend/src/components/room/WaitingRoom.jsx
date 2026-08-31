@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import SeatList from './SeatList';
 import BotSettings from './BotSettings';
+import InviteFriendPanel from './InviteFriendPanel';
 
 export default function WaitingRoom({
   room,
@@ -12,7 +13,8 @@ export default function WaitingRoom({
   onLeaveRoom,
   onKickPlayer,
   onRemoveBot,
-  onCloseRoom
+  onCloseRoom,
+  onChangeSeat
 }) {
   const [starting, setStarting] = useState(false);
   const [leaving, setLeaving] = useState(false);
@@ -91,12 +93,15 @@ export default function WaitingRoom({
           myUserId={myUserId}
           onKickPlayer={onKickPlayer}
           onRemoveBot={onRemoveBot}
+          onChangeSeat={onChangeSeat}
         />
       </div>
 
       {isHost && (
         <BotSettings emptySeatCount={emptySeatCount} onAddBot={onAddBot} disabled={starting} />
       )}
+
+      <InviteFriendPanel roomId={room.id} />
 
       {isHost ? (
         <button
