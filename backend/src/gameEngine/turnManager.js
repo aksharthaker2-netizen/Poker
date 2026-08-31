@@ -126,6 +126,22 @@ class TurnManager {
       this.currentPlayerIndex = newCurrentIndex === -1 ? 0 : newCurrentIndex;
     }
   }
+
+  /**
+   * Adds a player back into rotation — used for rebuys, where a player
+   * busted (chips reached 0), a subsequent startHand() call dropped them
+   * from tracking entirely (see removePlayer/GameEngine.startHand's
+   * busted-player sync), and they've now topped up their chips and want
+   * back in. Appended to the end of rotation; they'll be included
+   * starting from the next setupNewHand() call — dealer/current-actor
+   * indices are untouched since appending never shifts existing
+   * positions. No-ops if already tracked, so calling it defensively
+   * twice is harmless.
+   */
+  addPlayer(playerId) {
+    if (this.players.includes(playerId)) return;
+    this.players.push(playerId);
+  }
 }
 
 module.exports = TurnManager;
