@@ -1,6 +1,9 @@
 // src/socket/gameSocket.js
 const roomManager = require('../managers/roomManager');
 const { broadcastAndCheckBot } = require('./gameFlowManager');
+const validateSocketPayload = require('../middleware/validateSocketPayload');
+const { enforceRateLimit } = require('../utils/socketRateLimiter');
+const { playerActionSchema } = require('../validators/socketValidators');
 
 module.exports = function registerGameHandlers(io, socket) {
   // Trusted identity, verified once by socketAuthMiddleware at connection.
@@ -10,7 +13,19 @@ module.exports = function registerGameHandlers(io, socket) {
 
   socket.on('PLAYER_ACTION', async (payload, callback) => {
     try {
-      const { roomId, action, additionalChips = 0 } = payload;
+      // Turn-based play naturally limits legitimate action frequency, but
+      // a malicious client can still spam PLAYER_ACTION out of turn —
+      // each gets rejected by the engine, but still costs a validation
+      // pass + log line per event with zero throttling. 20/5s is well
+      // above any human's real click rate but stops a spam loop cold.
+      enforceRateLimit(`${userId}:PLAYER_ACTION`, 20, 5_000);
+
+      // FIX: this used to destructure the raw payload directly — a
+      // malformed additionalChips (a string, NaN, an object) would reach
+      // straight into bettingManager's arithmetic. The engine's own
+      // legalActions check catches most bad ACTIONs, but not malformed
+      // numeric fields specifically. Validated + coerced here instead.
+      const { roomId, action, additionalChips } = validateSocketPayload(playerActionSchema, payload);
 
       const room = roomManager.getRoom(roomId);
       if (!room) throw new Error('Room not found.');

@@ -1,5 +1,9 @@
 // src/socket/friendSocket.js
 const presenceManager = require('../managers/presenceManager');
+const friendRepository = require('../repositories/friendRepository');
+const validateSocketPayload = require('../middleware/validateSocketPayload');
+const { enforceRateLimit } = require('../utils/socketRateLimiter');
+const { sendGameInviteSchema } = require('../validators/socketValidators');
 
 module.exports = function registerFriendHandlers(io, socket) {
   // Trusted identity, verified once by socketAuthMiddleware at connection.
@@ -11,18 +15,28 @@ module.exports = function registerFriendHandlers(io, socket) {
   // and no risk of a client lying about which userId just came online.
 
   // SEND GAME INVITE
-  socket.on('SEND_GAME_INVITE', (payload, callback) => {
+  socket.on('SEND_GAME_INVITE', async (payload, callback) => {
     try {
-      const { senderName, targetUserId, roomId } = payload;
+      // Stricter than most events — invites are the one thing here that
+      // directly bothers another person, so spam potential matters more.
+      enforceRateLimit(`${userId}:SEND_GAME_INVITE`, 10, 60_000);
+      const { senderName, targetUserId, roomId } = validateSocketPayload(sendGameInviteSchema, payload);
 
-      // Look up the target in our memory map
+      // FIX: this previously only checked the target was online — nothing
+      // verified an actual ACCEPTED friendship existed. Since userId is
+      // visible in ordinary socket traffic, anyone could spam invites at
+      // any other user just by knowing their id. Require a real,
+      // mutual, ACCEPTED relationship first.
+      const relationship = await friendRepository.findRelationship(userId, targetUserId);
+      if (!relationship || relationship.status !== 'ACCEPTED') {
+        throw new Error('You can only invite accepted friends.');
+      }
+
       const targetSocketId = presenceManager.getSocketId(targetUserId);
-
       if (!targetSocketId) {
         throw new Error('Player is currently offline.');
       }
 
-      // Route the invite exclusively to the target user's socket
       io.to(targetSocketId).emit('RECEIVE_GAME_INVITE', {
         senderId: userId, // trusted identity — NOT payload.senderId
         senderName,

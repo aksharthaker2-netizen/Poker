@@ -46,6 +46,30 @@ function getProfileById(userId) {
   });
 }
 
+/**
+ * Updates only the fields a user is allowed to self-edit. Deliberately a
+ * narrow allowlist (displayName/bio/avatarUrl) — nothing here can touch
+ * rating, chipsBalance, isBanned, etc. `data` is expected to already be
+ * validated/whitelisted by the caller's Zod schema (updateProfileSchema).
+ */
+function updateProfile(userId, data) {
+  return prisma.user.update({
+    where: { id: userId },
+    data,
+    select: {
+      id: true,
+      username: true,
+      email: true,
+      displayName: true,
+      avatarUrl: true,
+      bio: true,
+      rating: true,
+      chipsBalance: true,
+      createdAt: true
+    }
+  });
+}
+
 function searchByUsername(query, excludeUserId, limit = 20) {
   return prisma.user.findMany({
     where: {
@@ -115,6 +139,7 @@ module.exports = {
   create,
   createStatsRow,
   getProfileById,
+  updateProfile,
   searchByUsername,
   findTopByRating,
   updateLastSeen,

@@ -2,7 +2,19 @@
 const roomManager = require('../managers/roomManager');
 const botManager = require('../managers/botManager');
 const presenceManager = require('../managers/presenceManager');
+const seatManager = require('../managers/seatManager');
 const { dealPrivateHands, broadcastAndCheckBot, handlePlayerLeaving, closeRoom } = require('./gameFlowManager');
+const validateSocketPayload = require('../middleware/validateSocketPayload');
+const { enforceRateLimit } = require('../utils/socketRateLimiter');
+const {
+  createRoomSchema,
+  joinRoomSchema,
+  roomIdOnlySchema,
+  addBotSchema,
+  kickPlayerSchema,
+  removeBotSchema,
+  changeSeatSchema
+} = require('../validators/socketValidators');
 
 module.exports = function registerRoomHandlers(io, socket) {
   // Trusted identity, verified once by socketAuthMiddleware at connection.
@@ -13,21 +25,25 @@ module.exports = function registerRoomHandlers(io, socket) {
   // 1. CREATE A NEW ROOM
   socket.on('CREATE_ROOM', async (payload, callback) => {
     try {
-      const { username, settings } = payload;
+      enforceRateLimit(`${userId}:CREATE_ROOM`, 5, 60_000);
+      const { username, settings, requestedSeat } = validateSocketPayload(createRoomSchema, payload);
 
       const newRoom = await roomManager.createRoom(userId, settings);
       socket.join(newRoom.id);
 
-      // Automatically put the host into a seat
-      const updatedRoom = roomManager.joinRoom(newRoom.id, {
-        id: userId,
-        username: username || socket.data.username,
-        chips: settings?.startingChips
-      });
+      // Automatically put the host into a seat — requestedSeat lets the
+      // host pick where to sit at their own empty table (there's no
+      // occupancy conflict possible here since nobody else has joined yet).
+      const updatedRoom = roomManager.joinRoom(
+        newRoom.id,
+        {
+          id: userId,
+          username: username || socket.data.username,
+          chips: settings?.startingChips
+        },
+        requestedSeat
+      );
 
-      // FIX: this was never called anywhere, which meant
-      // presenceManager.getUser(userId).roomId was always null and the
-      // disconnect handler's whole cleanup path was unreachable dead code.
       presenceManager.setInGame(userId, newRoom.id);
 
       console.log(`[Room] ${username} created room ${newRoom.id}`);
@@ -41,7 +57,8 @@ module.exports = function registerRoomHandlers(io, socket) {
   // 2. JOIN AN EXISTING ROOM
   socket.on('JOIN_ROOM', (payload, callback) => {
     try {
-      const { roomId, username, requestedSeat } = payload;
+      enforceRateLimit(`${userId}:JOIN_ROOM`, 15, 60_000);
+      const { roomId, username, requestedSeat } = validateSocketPayload(joinRoomSchema, payload);
 
       const updatedRoom = roomManager.joinRoom(
         roomId,
@@ -52,8 +69,6 @@ module.exports = function registerRoomHandlers(io, socket) {
       presenceManager.setInGame(userId, roomId);
 
       console.log(`[Room] ${username} joined room ${roomId}`);
-
-      // Broadcast to EVERYONE in the room that the seats updated
       io.to(roomId).emit('ROOM_UPDATED', { room: updatedRoom });
 
       if (typeof callback === 'function') callback({ success: true, room: updatedRoom });
@@ -66,7 +81,8 @@ module.exports = function registerRoomHandlers(io, socket) {
   // 3. ADD A BOT TO THE TABLE
   socket.on('ADD_BOT', (payload, callback) => {
     try {
-      const { roomId, requestedSeat } = payload;
+      enforceRateLimit(`${userId}:ADD_BOT`, 30, 60_000);
+      const { roomId, requestedSeat } = validateSocketPayload(addBotSchema, payload);
       const room = roomManager.getRoom(roomId);
 
       if (!room) throw new Error('Room not found.');
@@ -77,7 +93,6 @@ module.exports = function registerRoomHandlers(io, socket) {
       const updatedRoom = roomManager.joinRoom(roomId, botProfile, requestedSeat);
 
       console.log(`[Room] Host added bot ${botProfile.username} to room ${roomId}`);
-
       io.to(roomId).emit('ROOM_UPDATED', { room: updatedRoom });
 
       if (typeof callback === 'function') callback({ success: true, room: updatedRoom });
@@ -90,7 +105,8 @@ module.exports = function registerRoomHandlers(io, socket) {
   // 4. START THE GAME
   socket.on('START_GAME', async (payload, callback) => {
     try {
-      const { roomId } = payload;
+      enforceRateLimit(`${userId}:START_GAME`, 10, 60_000);
+      const { roomId } = validateSocketPayload(roomIdOnlySchema, payload);
       const room = roomManager.getRoom(roomId);
 
       if (!room) throw new Error('Room not found.');
@@ -131,7 +147,8 @@ module.exports = function registerRoomHandlers(io, socket) {
   // 5. LEAVE THE ROOM
   socket.on('LEAVE_ROOM', async (payload, callback) => {
     try {
-      const { roomId } = payload;
+      enforceRateLimit(`${userId}:LEAVE_ROOM`, 15, 60_000);
+      const { roomId } = validateSocketPayload(roomIdOnlySchema, payload);
 
       await handlePlayerLeaving(io, roomId, userId, { immediate: true });
       socket.leave(roomId);
@@ -148,7 +165,8 @@ module.exports = function registerRoomHandlers(io, socket) {
   // 6. HOST: KICK A HUMAN PLAYER
   socket.on('KICK_PLAYER', async (payload, callback) => {
     try {
-      const { roomId, targetUserId } = payload;
+      enforceRateLimit(`${userId}:KICK_PLAYER`, 20, 60_000);
+      const { roomId, targetUserId } = validateSocketPayload(kickPlayerSchema, payload);
       const room = roomManager.getRoom(roomId);
 
       if (!room) throw new Error('Room not found.');
@@ -182,7 +200,8 @@ module.exports = function registerRoomHandlers(io, socket) {
   // 7. HOST: REMOVE A BOT
   socket.on('REMOVE_BOT', async (payload, callback) => {
     try {
-      const { roomId, botId } = payload;
+      enforceRateLimit(`${userId}:REMOVE_BOT`, 30, 60_000);
+      const { roomId, botId } = validateSocketPayload(removeBotSchema, payload);
       const room = roomManager.getRoom(roomId);
 
       if (!room) throw new Error('Room not found.');
@@ -210,7 +229,8 @@ module.exports = function registerRoomHandlers(io, socket) {
   // 8. HOST: CLOSE THE ROOM
   socket.on('CLOSE_ROOM', async (payload, callback) => {
     try {
-      const { roomId } = payload;
+      enforceRateLimit(`${userId}:CLOSE_ROOM`, 10, 60_000);
+      const { roomId } = validateSocketPayload(roomIdOnlySchema, payload);
       const room = roomManager.getRoom(roomId);
 
       if (!room) throw new Error('Room not found.');
@@ -222,6 +242,86 @@ module.exports = function registerRoomHandlers(io, socket) {
       if (typeof callback === 'function') callback({ success: true });
     } catch (error) {
       console.error('[Room Error - Close]', error.message);
+      if (typeof callback === 'function') callback({ success: false, error: error.message });
+    }
+  });
+
+  // 9. CHANGE SEAT (self-service — this is how seat selection actually
+  // works: you can't meaningfully pick a seat before joining since you
+  // don't know the room's occupancy yet, so this lets anyone already
+  // seated move to an empty seat while still in the lobby).
+  socket.on('CHANGE_SEAT', (payload, callback) => {
+    try {
+      enforceRateLimit(`${userId}:CHANGE_SEAT`, 15, 60_000);
+      const { roomId, requestedSeat } = validateSocketPayload(changeSeatSchema, payload);
+      const room = roomManager.getRoom(roomId);
+
+      if (!room) throw new Error('Room not found.');
+      if (room.status === 'PLAYING') throw new Error('Cannot change seats while a hand is in progress.');
+      if (requestedSeat >= room.seats.length) throw new Error('Invalid seat number.');
+      if (room.seats[requestedSeat] !== null) throw new Error('That seat is already taken.');
+
+      const currentSeat = room.seats.find((s) => s && s.id === userId);
+      if (!currentSeat) throw new Error('You are not seated in this room.');
+
+      // Move by freeing the old seat and re-taking a new one with the
+      // SAME player object — preserves chips/status rather than resetting
+      // them, which a leave+rejoin would otherwise do.
+      seatManager.leaveSeat(room, userId);
+      seatManager.takeSeat(room, currentSeat, requestedSeat);
+
+      io.to(roomId).emit('ROOM_UPDATED', { room });
+      if (typeof callback === 'function') callback({ success: true, room });
+    } catch (error) {
+      console.error('[Room Error - Change Seat]', error.message);
+      if (typeof callback === 'function') callback({ success: false, error: error.message });
+    }
+  });
+
+  // 10. REBUY — top up chips after busting. See rebuy-safety note below.
+  socket.on('REBUY', (payload, callback) => {
+    try {
+      enforceRateLimit(`${userId}:REBUY`, 10, 60_000);
+      const { roomId } = validateSocketPayload(roomIdOnlySchema, payload);
+      const room = roomManager.getRoom(roomId);
+
+      if (!room) throw new Error('Room not found.');
+
+      const seat = room.seats.find((s) => s && s.id === userId);
+      if (!seat) throw new Error('You are not seated in this room.');
+
+      const livePlayer = room.game ? room.game.players.find((p) => p.id === userId) : null;
+      const currentChips = livePlayer ? livePlayer.chips : seat.chips;
+
+      if (currentChips > 0) throw new Error('You still have chips — no need to rebuy.');
+
+      const rebuyAmount = room.settings.startingChips || 1000;
+
+      // SAFETY: unlike removing a player, TOPPING UP chips is always safe
+      // regardless of hand state — a busted player (chips === 0) is
+      // already excluded from every pot's eligibility this hand (they
+      // went all-in and lost, or folded), so increasing `chips` on their
+      // EXISTING object never affects current pot math. The only two
+      // cases are: (a) still present in game.players from busting this/
+      // last hand — top up directly; (b) already dropped by a PREVIOUS
+      // startHand()'s busted-filter — re-add them fresh for the next hand.
+      if (livePlayer) {
+        livePlayer.chips = rebuyAmount;
+      } else if (room.game) {
+        room.game.players.push({ id: userId, chips: rebuyAmount, status: 'WAITING' });
+        // turnManager keeps its OWN player list, separate from
+        // game.players — without this they'd be dealt cards next hand
+        // but never actually get a turn.
+        room.game.turnManager.addPlayer(userId);
+      }
+
+      seat.chips = rebuyAmount;
+
+      io.to(roomId).emit('ROOM_UPDATED', { room });
+      console.log(`[Room] ${userId} rebought ${rebuyAmount} chips in room ${roomId}`);
+      if (typeof callback === 'function') callback({ success: true, newChips: rebuyAmount });
+    } catch (error) {
+      console.error('[Room Error - Rebuy]', error.message);
       if (typeof callback === 'function') callback({ success: false, error: error.message });
     }
   });
