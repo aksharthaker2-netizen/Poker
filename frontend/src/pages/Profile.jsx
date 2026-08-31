@@ -12,10 +12,98 @@ function StatCard({ label, value }) {
   );
 }
 
+function EditProfileForm({ profile, onSave, onCancel }) {
+  const [displayName, setDisplayName] = useState(profile.displayName || '');
+  const [bio, setBio] = useState(profile.bio || '');
+  const [avatarUrl, setAvatarUrl] = useState(profile.avatarUrl || '');
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState(null);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setFormError(null);
+    setSaving(true);
+    try {
+      // Send null (not empty string) for cleared fields — matches the
+      // backend's nullable schema and actually clears the column rather
+      // than storing "".
+      await onSave({
+        displayName: displayName.trim() || null,
+        bio: bio.trim() || null,
+        avatarUrl: avatarUrl.trim() || null
+      });
+    } catch (err) {
+      setFormError(err.response?.data?.error || 'Failed to save profile');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form
+      onSubmit={handleSubmit}
+      className="flex flex-col gap-3 rounded-lg border border-[#D4AF37]/30 bg-[#0F1513] p-4"
+    >
+      {formError && <p className="text-sm text-[#B23A2E]">{formError}</p>}
+
+      <label className="flex flex-col gap-1 text-sm text-[#8B9A94]">
+        Display name
+        <input
+          type="text"
+          maxLength={40}
+          value={displayName}
+          onChange={(e) => setDisplayName(e.target.value)}
+          className="rounded border border-[#22302B] bg-[#0B0F10] px-3 py-2 text-[#EDEAE3] outline-none focus:border-[#D4AF37]"
+        />
+      </label>
+
+      <label className="flex flex-col gap-1 text-sm text-[#8B9A94]">
+        Bio
+        <textarea
+          maxLength={280}
+          rows={3}
+          value={bio}
+          onChange={(e) => setBio(e.target.value)}
+          className="resize-none rounded border border-[#22302B] bg-[#0B0F10] px-3 py-2 text-[#EDEAE3] outline-none focus:border-[#D4AF37]"
+        />
+      </label>
+
+      <label className="flex flex-col gap-1 text-sm text-[#8B9A94]">
+        Avatar URL
+        <input
+          type="url"
+          placeholder="https://…"
+          value={avatarUrl}
+          onChange={(e) => setAvatarUrl(e.target.value)}
+          className="rounded border border-[#22302B] bg-[#0B0F10] px-3 py-2 text-[#EDEAE3] outline-none focus:border-[#D4AF37]"
+        />
+      </label>
+
+      <div className="flex gap-2">
+        <button
+          type="submit"
+          disabled={saving}
+          className="rounded bg-[#D4AF37] px-4 py-2 text-sm font-medium text-[#0B0F10] transition hover:brightness-110 disabled:opacity-50"
+        >
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded border border-[#22302B] px-4 py-2 text-sm text-[#8B9A94] hover:border-[#D4AF37]"
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
 export default function Profile() {
   const navigate = useNavigate();
   const [profile, setProfile] = useState(null);
   const [error, setError] = useState(null);
+  const [editing, setEditing] = useState(false);
 
   useEffect(() => {
     userApi
@@ -23,6 +111,15 @@ export default function Profile() {
       .then(({ data }) => setProfile(data))
       .catch((err) => setError(err.response?.data?.error || 'Failed to load profile'));
   }, []);
+
+  const handleSave = async (data) => {
+    const { data: updated } = await userApi.updateProfile(data);
+    // updateProfile's response doesn't include stats/achievements (see
+    // userRepository.updateProfile's narrower select) — merge onto the
+    // existing profile rather than replacing it wholesale.
+    setProfile((prev) => ({ ...prev, ...updated }));
+    setEditing(false);
+  };
 
   if (error) {
     return (
@@ -56,16 +153,34 @@ export default function Profile() {
       <div className="mx-auto flex max-w-2xl flex-col gap-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-semibold">{profile.username}</h1>
-            <p className="text-sm text-[#8B9A94]">{profile.email}</p>
+            <h1 className="text-2xl font-semibold">{profile.displayName || profile.username}</h1>
+            <p className="text-sm text-[#8B9A94]">
+              @{profile.username} · {profile.email}
+            </p>
           </div>
-          <button
-            onClick={() => navigate('/')}
-            className="rounded border border-[#22302B] px-3 py-1.5 text-sm hover:border-[#D4AF37]"
-          >
-            Back to lobby
-          </button>
+          <div className="flex gap-2">
+            {!editing && (
+              <button
+                onClick={() => setEditing(true)}
+                className="rounded border border-[#22302B] px-3 py-1.5 text-sm hover:border-[#D4AF37]"
+              >
+                Edit profile
+              </button>
+            )}
+            <button
+              onClick={() => navigate('/')}
+              className="rounded border border-[#22302B] px-3 py-1.5 text-sm hover:border-[#D4AF37]"
+            >
+              Back to lobby
+            </button>
+          </div>
         </div>
+
+        {editing ? (
+          <EditProfileForm profile={profile} onSave={handleSave} onCancel={() => setEditing(false)} />
+        ) : (
+          profile.bio && <p className="text-sm text-[#8B9A94]">{profile.bio}</p>
+        )}
 
         <div className="rounded-lg border border-[#22302B] bg-[#0F1513] p-4">
           <p className="font-mono text-3xl text-[#D4AF37]">{profile.rating}</p>

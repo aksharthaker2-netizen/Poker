@@ -83,6 +83,7 @@ export const authApi = {
 
 export const userApi = {
   getProfile: () => api.get('/api/users/me'),
+  updateProfile: (data) => api.patch('/api/users/me', data),
   getStats: (userId) => api.get(`/api/users/${userId}/stats`)
 };
 
@@ -98,6 +99,25 @@ export const friendsApi = {
 
 export const leaderboardApi = {
   getGlobal: (period = 'GLOBAL') => api.get(`/api/leaderboard?period=${period}`)
+};
+
+export const gamesApi = {
+  listMine: (limit = 20) => api.get(`/api/games/me?limit=${limit}`),
+  getDetail: (gameId) => api.get(`/api/games/${gameId}`)
+};
+
+export const roomsApi = {
+  listMine: (limit = 20) => api.get(`/api/rooms/mine?limit=${limit}`)
+};
+
+export const achievementsApi = {
+  listAll: () => api.get('/api/achievements'),
+  listMine: () => api.get('/api/achievements/me')
+};
+
+export const reviewsApi = {
+  getForGame: (gameId) => api.get(`/api/reviews/game/${gameId}`),
+  getHand: (handId) => api.get(`/api/reviews/hand/${handId}`)
 };
 
 export { clearSession };
