@@ -23,4 +23,23 @@ async function getStats(req, res) {
   }
 }
 
-module.exports = { getProfile, getStats };
+async function updateProfile(req, res) {
+  try {
+    // req.body is already validated by updateProfileSchema
+    const { displayName, bio, avatarUrl } = req.body; 
+    
+    // Assuming your userRepository has an update function
+    const updatedUser = await userRepository.updateProfile(req.userId, {
+      displayName,
+      bio,
+      avatarUrl
+    });
+
+    return res.json(updatedUser);
+  } catch (error) {
+    console.error('[User] updateProfile error:', error.message);
+    return res.status(500).json({ error: 'Failed to update profile' });
+  }
+}
+
+module.exports = { getProfile, getStats, updateProfile };
