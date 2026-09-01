@@ -3,7 +3,7 @@ const roomManager = require('../managers/roomManager');
 const botManager = require('../managers/botManager');
 const presenceManager = require('../managers/presenceManager');
 const seatManager = require('../managers/seatManager');
-const { dealPrivateHands, broadcastAndCheckBot, handlePlayerLeaving, closeRoom } = require('./gameFlowManager');
+const { dealPrivateHands, broadcastAndCheckBot, handlePlayerLeaving, closeRoom, resetHandAnalysisTracking } = require('./gameFlowManager');
 const validateSocketPayload = require('../middleware/validateSocketPayload');
 const { enforceRateLimit } = require('../utils/socketRateLimiter');
 const {
@@ -82,14 +82,14 @@ module.exports = function registerRoomHandlers(io, socket) {
   socket.on('ADD_BOT', (payload, callback) => {
     try {
       enforceRateLimit(`${userId}:ADD_BOT`, 30, 60_000);
-      const { roomId, requestedSeat } = validateSocketPayload(addBotSchema, payload);
+      const { roomId, requestedSeat, botRating } = validateSocketPayload(addBotSchema, payload);
       const room = roomManager.getRoom(roomId);
 
       if (!room) throw new Error('Room not found.');
       if (room.hostId !== userId) throw new Error('Only the table host can add bots.');
       if (room.status === 'PLAYING') throw new Error('Cannot seat players while a hand is in progress.');
 
-      const botProfile = botManager.createBotProfile();
+      const botProfile = botManager.createBotProfile(botRating);
       const updatedRoom = roomManager.joinRoom(roomId, botProfile, requestedSeat);
 
       console.log(`[Room] Host added bot ${botProfile.username} to room ${roomId}`);
@@ -113,6 +113,7 @@ module.exports = function registerRoomHandlers(io, socket) {
       if (room.hostId !== userId) throw new Error('Only the table host can start the game.');
 
       const { initialGameState } = await roomManager.startGame(roomId);
+      resetHandAnalysisTracking(room);
       console.log(`[Room] Game started in room ${roomId}`);
 
       // PUBLIC state only. NEVER include initialGameState.playerHands here —

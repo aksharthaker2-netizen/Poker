@@ -185,6 +185,7 @@ function scheduleNextHand(io, roomId) {
 
     try {
       const initialState = room.game.startHand();
+      resetHandAnalysisTracking(room);
       dealPrivateHands(io, room);
       await broadcastAndCheckBot(io, roomId, {
         state: initialState.state,
@@ -195,6 +196,28 @@ function scheduleNextHand(io, roomId) {
       console.error('[GameFlow] Failed to start next hand:', error.message);
     }
   }, NEXT_HAND_DELAY_MS);
+}
+
+/**
+ * Resets the per-hand bookkeeping used to feed the AI Poker Coach's
+ * /analyze call (see mlContextBuilder.js and reviewService.analyzeAndAnnotate).
+ * Called every time a NEW hand starts — both here and in roomSocket.js's
+ * START_GAME handler, since those are the only two places startHand() is
+ * ever called.
+ *
+ * `humanDecisionPoints`: Map<userId, Array<mlContext + player_action>> —
+ *   populated in gameSocket.js's PLAYER_ACTION handler, BEFORE the action
+ *   mutates state (captures what the player actually saw when deciding).
+ * `humanHandActionIds`: Map<userId, Array<HandAction db id>> — populated
+ *   in persistenceService.persistHandAction, in the SAME order as the
+ *   above (both only ever grow by exactly one entry per real human
+ *   action, so index N in one array always corresponds to index N in the
+ *   other for a given user). This is how /analyze's response
+ *   (`decision_point` index) gets mapped back to a real HandAction row.
+ */
+function resetHandAnalysisTracking(room) {
+  room.humanDecisionPoints = new Map();
+  room.humanHandActionIds = new Map();
 }
 
 /**
@@ -294,5 +317,6 @@ module.exports = {
   forceFoldIfCurrentActor,
   scheduleNextHand,
   handlePlayerLeaving,
-  closeRoom
+  closeRoom,
+  resetHandAnalysisTracking
 };

@@ -4,6 +4,7 @@ const gameRepository = require('../repositories/gameRepository');
 const userRepository = require('../repositories/userRepository');
 const ratingService = require('./ratingService');
 const achievementService = require('./achievementService');
+const reviewService = require('./reviewService');
 
 /**
  * Creates the DB Room row backing an in-memory room. Returns its real
@@ -83,7 +84,7 @@ async function persistHandAction(room, lastAction) {
     const seat = room.seats.find((s) => s && s.id === lastAction.playerId);
     const isHuman = seat && !seat.isBot;
 
-    await gameRepository.createHandAction({
+    const created = await gameRepository.createHandAction({
       handId: dbHandId,
       seatId: lastAction.playerId,
       userId: isHuman ? lastAction.playerId : null,
@@ -92,6 +93,20 @@ async function persistHandAction(room, lastAction) {
       stage: lastAction.stage,
       sequenceInHand: lastAction.sequenceInHand
     });
+
+    // Record the new row's id, in order, so reviewService.analyzeAndAnnotate
+    // can map /analyze's response (a `decision_point` INDEX) back to a
+    // real HandAction row after the hand ends. Relies on this being
+    // called exactly once per human action, in the same order
+    // gameSocket.js's PLAYER_ACTION handler captured the pre-action
+    // context into room.humanDecisionPoints — see
+    // gameFlowManager.resetHandAnalysisTracking's doc comment for the
+    // full index-alignment guarantee.
+    if (isHuman && room.humanHandActionIds) {
+      const ids = room.humanHandActionIds.get(lastAction.playerId) || [];
+      ids.push(created.id);
+      room.humanHandActionIds.set(lastAction.playerId, ids);
+    }
   } catch (error) {
     console.error('[Persistence] Failed to save hand action:', error.message);
   }
@@ -177,6 +192,13 @@ async function persistCompletedHand(room, showdownResult) {
           stats: updatedStats,
           botCount
         });
+
+        // AI Poker Coach: sends this hand's decision points (captured
+        // live in gameSocket.js as the human actually played) to
+        // /analyze and annotates the corresponding HandAction rows.
+        // Fully self-contained failure handling inside — never throws,
+        // never blocks stats/rating from being saved above.
+        await reviewService.analyzeAndAnnotate(room, seat.id);
       })
     );
   } catch (error) {

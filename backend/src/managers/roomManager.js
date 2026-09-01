@@ -76,7 +76,11 @@ class RoomManager {
       username: player.username,
       chips: player.chips || 1000,
       status: 'WAITING',
-      isBot: player.isBot || false
+      isBot: player.isBot || false,
+      // Carried through from botManager.createBotProfile so
+      // mlContextBuilder-based bot decisions know which difficulty tier
+      // to request — undefined/null for humans, harmless either way.
+      botRating: player.botRating ?? null
     };
 
     // This assigns the player to the array and throws if the table is full

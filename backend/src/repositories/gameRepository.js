@@ -27,6 +27,15 @@ function createHandAction(data) {
   return prisma.handAction.create({ data });
 }
 
+/**
+ * Writes AI Poker Coach feedback (decisionScore/aiRecommended/
+ * aiExplanation) onto a specific HandAction row — called by
+ * reviewService.analyzeAndAnnotate after /analyze returns.
+ */
+function annotateHandAction(handActionId, data) {
+  return prisma.handAction.update({ where: { id: handActionId }, data });
+}
+
 function findManyByUser(userId, limit = 20) {
   return prisma.game.findMany({
     where: { hands: { some: { actions: { some: { userId } } } } },
@@ -77,6 +86,7 @@ module.exports = {
   createHand,
   finalizeHand,
   createHandAction,
+  annotateHandAction,
   findManyByUser,
   findByIdWithHands,
   findHandWithActions,

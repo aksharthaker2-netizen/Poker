@@ -58,6 +58,11 @@ class GameEngine {
     this._dbHandId = null;
     this.actionSequence = 0;
     this.lastAction = null;
+    // Full-hand action log (every fold/check/call/bet/raise/all-in, in
+    // order) — used to build the ML service's `action_history` field
+    // (see mlContextBuilder.js). Distinct from `lastAction`, which only
+    // ever holds the SINGLE most recent action for persistence logging.
+    this.actionLog = [];
 
     // Snapshot each player's chip count BEFORE blinds are posted, so
     // persistenceService can compute true net win/loss per hand later
@@ -148,6 +153,7 @@ class GameEngine {
       stage: stageAtAction,
       sequenceInHand: this.actionSequence
     };
+    this.actionLog.push({ playerId, action, amount: chipsCommitted, stage: stageAtAction });
 
     // 3. Physically move the chips (PotManager alters playerObj.chips via reference)
     if (chipsCommitted > 0) {
