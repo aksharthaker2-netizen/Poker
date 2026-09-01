@@ -52,9 +52,9 @@ export function useRoom(currentUserId) {
   }, [socket, currentUserId]);
 
   const createRoom = useCallback(
-    async (username, settings) => {
+    async (username, settings, requestedSeat = null) => {
       try {
-        const res = await emitWithAck('CREATE_ROOM', { username, settings });
+        const res = await emitWithAck('CREATE_ROOM', { username, settings, requestedSeat });
         setRoom(res.room, currentUserId);
         return res.room;
       } catch (err) {
@@ -80,9 +80,9 @@ export function useRoom(currentUserId) {
   );
 
   const addBot = useCallback(
-    async (roomId, requestedSeat = null) => {
+    async (roomId, requestedSeat = null, botRating = null) => {
       try {
-        const res = await emitWithAck('ADD_BOT', { roomId, requestedSeat });
+        const res = await emitWithAck('ADD_BOT', { roomId, requestedSeat, botRating });
         setRoom(res.room, currentUserId);
         return res.room;
       } catch (err) {
@@ -157,6 +157,18 @@ export function useRoom(currentUserId) {
     [clearRoom]
   );
 
+  const changeSeat = useCallback(
+    async (roomId, requestedSeat) => {
+      try {
+        await emitWithAck('CHANGE_SEAT', { roomId, requestedSeat });
+      } catch (err) {
+        setError(err.message);
+        throw err;
+      }
+    },
+    [setError]
+  );
+
   return {
     room,
     isHost,
@@ -170,6 +182,7 @@ export function useRoom(currentUserId) {
     kickPlayer,
     removeBot,
     closeRoom,
+    changeSeat,
     clearRoom
   };
 }

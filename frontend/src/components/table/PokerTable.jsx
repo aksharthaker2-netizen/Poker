@@ -79,6 +79,7 @@ export default function PokerTable({
         actionInfo={actionInfo}
         myUserId={myUserId}
         myChips={me?.seatPlayer?.chips ?? 0}
+        roomId={room.id}
         onAction={onAction}
         disabled={gameState === 'SHOWDOWN' || gameState === 'WAITING'}
       />
