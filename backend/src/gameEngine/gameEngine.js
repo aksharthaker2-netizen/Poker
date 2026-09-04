@@ -295,8 +295,21 @@ class GameEngine {
       });
     });
 
+    // FIX: this.state is intentionally WAITING here (internal engine
+    // state — the hand is over, ready for the next startHand() call, and
+    // other guards like handlePlayerAction's "no hand in progress" check
+    // rely on it being WAITING/SHOWDOWN-equivalent). But the RETURNED
+    // result must signal 'SHOWDOWN' distinctly — every caller downstream
+    // (gameFlowManager.broadcastAndCheckBot, buildPublicPayload) checks
+    // `actionResult.state === 'SHOWDOWN'` specifically to decide whether
+    // to persist the hand, schedule the next one, and broadcast
+    // results/revealedHands to the frontend. Returning `this.state`
+    // directly here meant that check could NEVER fire — every hand
+    // ending (fold-out or full river reveal) silently froze the table:
+    // chips were credited correctly, but nothing ever told the frontend
+    // who won or started the next hand.
     this.state = GAME_STATES.WAITING;
-    return { state: this.state, results, finalBalances: this.players };
+    return { state: GAME_STATES.SHOWDOWN, results, finalBalances: this.players };
   }
 }
 
