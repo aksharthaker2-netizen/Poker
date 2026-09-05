@@ -127,21 +127,35 @@ export default function Game() {
 
   if (!room) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#0B0F10] text-[#8B9A94]">
-        Loading table…
+      <div className="flex min-h-screen items-center justify-center bg-ink text-text-muted">
+        <span className="flex items-center gap-2 text-sm">
+          <span className="h-3 w-3 animate-spin rounded-full border-2 border-gold border-t-transparent" />
+          Loading table…
+        </span>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#0B0F10] px-4 py-10">
-      <div className="mx-auto mb-4 flex max-w-3xl justify-end">
+    <div className="min-h-screen bg-ink px-4 py-6">
+      <div className="mx-auto mb-4 flex max-w-4xl items-center justify-between">
         <button
-          onClick={handleLeaveTable}
-          className="rounded border border-[#22302B] px-3 py-1.5 text-sm text-[#8B9A94] transition hover:border-[#B23A2E] hover:text-[#B23A2E]"
+          onClick={() => navigate('/')}
+          className="flex items-center gap-1.5 font-display text-base font-semibold text-text transition hover:text-gold"
         >
-          Leave table
+          <span className="text-gold">♠</span> PokerAI
         </button>
+        <div className="flex items-center gap-3">
+          <span className="hidden font-mono text-xs text-faint sm:inline">
+            Room {room.id}
+          </span>
+          <button
+            onClick={handleLeaveTable}
+            className="rounded-lg border border-border px-3.5 py-1.5 text-sm text-text-muted transition hover:border-danger hover:text-danger"
+          >
+            Leave table
+          </button>
+        </div>
       </div>
 
       <PokerTable
@@ -160,23 +174,24 @@ export default function Game() {
       />
 
       {gameState === 'SHOWDOWN' && showdownResults && (
-        <div className="mx-auto mt-6 max-w-md rounded-lg border border-[#D4AF37]/40 bg-[#0F1513] p-4 text-center text-[#EDEAE3]">
-          <p className="mb-2 font-semibold text-[#D4AF37]">Showdown</p>
+        <div className="mx-auto mt-6 max-w-md animate-fade-up rounded-xl border border-gold/40 bg-panel p-5 text-center shadow-panel">
+          <p className="mb-2 font-display text-lg font-semibold text-gold">🏆 Showdown</p>
           {showdownResults.map((pot, i) => (
-            <p key={i} className="text-sm">
-              Pot {i + 1}: {pot.winners.map((w) => w.playerId).join(', ')} won {pot.payout}
+            <p key={i} className="text-sm text-text">
+              Pot {i + 1}: <span className="font-medium">{pot.winners.map((w) => w.playerId).join(', ')}</span>{' '}
+              won <span className="font-mono text-gold">{pot.payout}</span>
             </p>
           ))}
-          <p className="mt-2 text-xs text-[#5A6B64]">Next hand starting soon…</p>
+          <p className="mt-3 text-xs text-faint">Next hand starting soon…</p>
         </div>
       )}
 
       {gameEndedReason && (
-        <div className="mx-auto mt-6 flex max-w-md flex-col items-center gap-3 rounded-lg border border-[#22302B] bg-[#0F1513] p-4 text-center">
-          <p className="text-sm text-[#EDEAE3]">{gameEndedReason}</p>
+        <div className="mx-auto mt-6 flex max-w-md animate-fade-up flex-col items-center gap-3 rounded-xl border border-border bg-panel p-5 text-center shadow-panel">
+          <p className="text-sm text-text">{gameEndedReason}</p>
           <button
             onClick={() => navigate(`/room/${roomId}`)}
-            className="rounded bg-[#D4AF37] px-4 py-2 text-sm font-medium text-[#0B0F10] hover:brightness-110"
+            className="rounded-lg bg-gold px-4 py-2 text-sm font-medium text-ink transition hover:brightness-110"
           >
             Back to waiting room
           </button>
@@ -184,17 +199,17 @@ export default function Game() {
       )}
 
       {isBustedOut && !gameEndedReason && (
-        <div className="mx-auto mt-6 flex max-w-md flex-col items-center gap-2 rounded-lg border border-[#B23A2E]/40 bg-[#B23A2E]/5 p-4 text-center">
-          <p className="text-sm text-[#EDEAE3]">You're out of chips.</p>
-          {rebuyError && <p className="text-xs text-[#B23A2E]">{rebuyError}</p>}
+        <div className="mx-auto mt-6 flex max-w-md animate-fade-up flex-col items-center gap-2 rounded-xl border border-danger/40 bg-danger/5 p-5 text-center shadow-panel">
+          <p className="text-sm text-text">You're out of chips.</p>
+          {rebuyError && <p className="text-xs text-danger">{rebuyError}</p>}
           <button
             onClick={handleRebuy}
             disabled={rebuying}
-            className="rounded bg-[#D4AF37] px-4 py-2 text-sm font-medium text-[#0B0F10] transition hover:brightness-110 disabled:opacity-50"
+            className="rounded-lg bg-gold px-4 py-2 text-sm font-medium text-ink transition hover:brightness-110 disabled:opacity-50"
           >
             {rebuying ? 'Rebuying…' : `Rebuy for ${room.settings?.startingChips ?? 1000} chips`}
           </button>
-          <p className="text-xs text-[#5A6B64]">You'll be dealt back in from the next hand.</p>
+          <p className="text-xs text-faint">You'll be dealt back in from the next hand.</p>
         </div>
       )}
     </div>

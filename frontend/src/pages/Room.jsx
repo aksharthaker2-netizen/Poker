@@ -22,6 +22,7 @@ export default function Room() {
     kickPlayer,
     removeBot,
     closeRoom,
+    changeSeat,
     clearRoom
   } = useRoom(userId);
 
@@ -88,7 +89,7 @@ export default function Room() {
         room={room}
         isHost={isHost}
         myUserId={userId}
-        onAddBot={() => addBot(roomId)}
+        onAddBot={(botRating) => addBot(roomId, null, botRating)}
         onStartGame={() => startGame(roomId)}
         onLeaveRoom={async () => {
           await leaveRoom(roomId);
@@ -100,6 +101,7 @@ export default function Room() {
           await closeRoom(roomId);
           navigate('/');
         }}
+        onChangeSeat={(seatIndex) => changeSeat(roomId, seatIndex)}
       />
     </div>
   );

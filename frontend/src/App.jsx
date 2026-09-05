@@ -10,28 +10,36 @@ import Friends from './pages/Friends';
 import GameHistory from './pages/GameHistory';
 import RoomHistory from './pages/RoomHistory';
 import Achievements from './pages/Achievements';
+import AppShell from './components/layout/AppShell';
 
 function RequireAuth({ children }) {
   const hasSession = Boolean(localStorage.getItem('accessToken'));
   return hasSession ? children : <Navigate to="/login" replace />;
 }
 
-const protect = (element) => <RequireAuth>{element}</RequireAuth>;
+// Every authenticated page gets the persistent nav shell EXCEPT Game.jsx,
+// which stays deliberately full-bleed/immersive — see AppShell's doc comment.
+const shell = (element) => (
+  <RequireAuth>
+    <AppShell>{element}</AppShell>
+  </RequireAuth>
+);
+const bare = (element) => <RequireAuth>{element}</RequireAuth>;
 
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
-        <Route path="/" element={protect(<Home />)} />
-        <Route path="/room/:roomId" element={protect(<Room />)} />
-        <Route path="/game/:roomId" element={protect(<Game />)} />
-        <Route path="/profile" element={protect(<Profile />)} />
-        <Route path="/leaderboard" element={protect(<Leaderboard />)} />
-        <Route path="/friends" element={protect(<Friends />)} />
-        <Route path="/games" element={protect(<GameHistory />)} />
-        <Route path="/rooms" element={protect(<RoomHistory />)} />
-        <Route path="/achievements" element={protect(<Achievements />)} />
+        <Route path="/" element={shell(<Home />)} />
+        <Route path="/room/:roomId" element={shell(<Room />)} />
+        <Route path="/game/:roomId" element={bare(<Game />)} />
+        <Route path="/profile" element={shell(<Profile />)} />
+        <Route path="/leaderboard" element={shell(<Leaderboard />)} />
+        <Route path="/friends" element={shell(<Friends />)} />
+        <Route path="/games" element={shell(<GameHistory />)} />
+        <Route path="/rooms" element={shell(<RoomHistory />)} />
+        <Route path="/achievements" element={shell(<Achievements />)} />
       </Routes>
     </BrowserRouter>
   );

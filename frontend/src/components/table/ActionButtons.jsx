@@ -8,12 +8,6 @@ import { emitWithAck } from '../../services/socket';
  * (the same computation botManager relies on for bots). No more guessing
  * Check-vs-Call from highestBet alone. The server still re-validates every
  * action regardless; this just makes the UI precise instead of best-effort.
- *
- * @param {Object|null} actionInfo - { playerId, amountToCall, minRaiseAmount, legalActions }
- * @param {Number} myChips
- * @param {String} roomId - needed for the GET_HINT socket call
- * @param {Function} onAction - (action, additionalChips) => Promise
- * @param {Boolean} disabled
  */
 export default function ActionButtons({ actionInfo, myUserId, myChips, roomId, onAction, disabled }) {
   const isMyTurn = actionInfo?.playerId === myUserId;
@@ -27,19 +21,26 @@ export default function ActionButtons({ actionInfo, myUserId, myChips, roomId, o
   const [hintLoading, setHintLoading] = useState(false);
   const [hintError, setHintError] = useState(null);
 
-  // Keep the raise input's floor in sync as the minimum changes turn to turn.
   useEffect(() => {
     setRaiseAmount((prev) => Math.max(prev, minRaiseAmount || 0));
   }, [minRaiseAmount]);
 
-  // A hint from a previous turn shouldn't linger once it's someone else's turn.
   useEffect(() => {
     setHint(null);
     setHintError(null);
   }, [actionInfo?.playerId]);
 
   if (!isMyTurn) {
-    return <p className="py-3 text-center text-sm text-[#5A6B64]">Waiting for other players…</p>;
+    return (
+      <div className="flex items-center gap-2 py-4 text-sm text-faint">
+        <span className="inline-flex gap-1">
+          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-faint [animation-delay:-0.3s]" />
+          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-faint [animation-delay:-0.15s]" />
+          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-faint" />
+        </span>
+        Waiting for other players
+      </div>
+    );
   }
 
   const canCheck = legalActions.includes('CHECK');
@@ -70,23 +71,23 @@ export default function ActionButtons({ actionInfo, myUserId, myChips, roomId, o
   };
 
   return (
-    <div className="flex flex-col items-center gap-2 py-3">
+    <div className="flex flex-col items-center gap-2.5 py-3">
       {hint && (
-        <div className="max-w-md rounded border border-[#D4AF37]/40 bg-[#D4AF37]/5 px-3 py-2 text-center text-xs text-[#EDEAE3]">
-          <span className="font-medium text-[#D4AF37]">
-            Suggested: {hint.suggestedAction}
+        <div className="max-w-md animate-fade-up rounded-lg border border-gold/40 bg-gold/5 px-4 py-2.5 text-center text-xs text-text shadow-card">
+          <span className="font-medium text-gold">
+            💡 Suggested: {hint.suggestedAction}
             {hint.suggestedRaiseAmount != null ? ` ${hint.suggestedRaiseAmount}` : ''}
           </span>
-          {hint.reason && <p className="mt-1 text-[#8B9A94]">{hint.reason}</p>}
+          {hint.reason && <p className="mt-1 text-text-muted">{hint.reason}</p>}
         </div>
       )}
-      {hintError && <p className="text-xs text-[#B23A2E]">{hintError}</p>}
+      {hintError && <p className="text-xs text-danger">{hintError}</p>}
 
       <div className="flex flex-wrap items-center justify-center gap-2">
         <button
           onClick={() => handleAction('FOLD')}
           disabled={disabled || submitting}
-          className="rounded border border-[#B23A2E] px-4 py-2 text-sm font-medium text-[#B23A2E] transition hover:bg-[#B23A2E] hover:text-[#EDEAE3] disabled:opacity-50"
+          className="rounded-lg border border-danger px-4 py-2.5 text-sm font-medium text-danger transition hover:bg-danger hover:text-text active:scale-95 disabled:opacity-50"
         >
           Fold
         </button>
@@ -95,7 +96,7 @@ export default function ActionButtons({ actionInfo, myUserId, myChips, roomId, o
           <button
             onClick={() => handleAction('CHECK')}
             disabled={disabled || submitting}
-            className="rounded border border-[#22302B] px-4 py-2 text-sm font-medium text-[#EDEAE3] transition hover:border-[#D4AF37] disabled:opacity-50"
+            className="rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-text transition hover:border-gold active:scale-95 disabled:opacity-50"
           >
             Check
           </button>
@@ -105,7 +106,7 @@ export default function ActionButtons({ actionInfo, myUserId, myChips, roomId, o
           <button
             onClick={() => handleAction('CALL')}
             disabled={disabled || submitting}
-            className="rounded border border-[#22302B] px-4 py-2 text-sm font-medium text-[#EDEAE3] transition hover:border-[#D4AF37] disabled:opacity-50"
+            className="rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-text transition hover:border-gold active:scale-95 disabled:opacity-50"
           >
             Call {amountToCall}
           </button>
@@ -119,12 +120,12 @@ export default function ActionButtons({ actionInfo, myUserId, myChips, roomId, o
               max={myChips}
               value={raiseAmount}
               onChange={(e) => setRaiseAmount(Number(e.target.value))}
-              className="w-24 rounded border border-[#22302B] bg-[#0B0F10] px-2 py-2 text-sm text-[#EDEAE3] outline-none focus:border-[#D4AF37]"
+              className="w-24 rounded-lg border border-border bg-ink px-2.5 py-2.5 text-sm text-text outline-none focus:border-gold focus:ring-2 focus:ring-gold/20"
             />
             <button
               onClick={() => handleAction('RAISE', raiseAmount)}
               disabled={disabled || submitting || raiseAmount < minRaiseAmount || raiseAmount > myChips}
-              className="rounded bg-[#D4AF37] px-4 py-2 text-sm font-medium text-[#0B0F10] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-lg bg-gold px-4 py-2.5 text-sm font-semibold text-ink transition hover:brightness-110 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Raise
             </button>
@@ -135,7 +136,7 @@ export default function ActionButtons({ actionInfo, myUserId, myChips, roomId, o
           <button
             onClick={() => handleAction('ALL_IN', myChips)}
             disabled={disabled || submitting}
-            className="rounded border border-[#22302B] px-4 py-2 text-sm font-medium text-[#8B9A94] transition hover:border-[#D4AF37] hover:text-[#D4AF37] disabled:opacity-50"
+            className="shimmer-gold animate-shimmer rounded-lg bg-clip-text px-4 py-2.5 text-sm font-semibold text-transparent ring-1 ring-inset ring-gold/50 transition hover:ring-gold active:scale-95 disabled:opacity-50"
           >
             All-in
           </button>
@@ -145,7 +146,7 @@ export default function ActionButtons({ actionInfo, myUserId, myChips, roomId, o
           onClick={handleGetHint}
           disabled={hintLoading}
           title="Ask the AI what it would do here"
-          className="rounded border border-[#22302B] px-3 py-2 text-sm text-[#5A6B64] transition hover:border-[#D4AF37] hover:text-[#D4AF37] disabled:opacity-50"
+          className="rounded-lg border border-border px-3.5 py-2.5 text-sm text-faint transition hover:border-gold hover:text-gold disabled:opacity-50"
         >
           {hintLoading ? '…' : '💡 Hint'}
         </button>

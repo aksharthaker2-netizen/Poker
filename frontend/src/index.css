@@ -3,5 +3,35 @@
 @tailwind utilities;
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #0a0d0c;
+}
+
+.font-display {
+  font-family: 'Fraunces', serif;
+  font-feature-settings: 'ss01' on;
+}
+
+/* Slim, dark scrollbar — the default light OS scrollbar looked jarring
+   against a near-black app. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: #0a0d0c;
+}
+::-webkit-scrollbar-thumb {
+  background: #22302b;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #2c3b34;
+}
+
+/* Used on the pot/action buttons for a subtle gold sheen sweep — cheaper
+   than an animated gradient library for one small effect. */
+.shimmer-gold {
+  background: linear-gradient(90deg, #d4af37 0%, #f0cb5c 50%, #d4af37 100%);
+  background-size: 200% 100%;
 }

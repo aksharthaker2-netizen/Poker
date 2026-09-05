@@ -9,8 +9,8 @@ import ActionButtons from './ActionButtons';
  */
 function getSeatPosition(index, total) {
   const angle = (index / total) * 2 * Math.PI - Math.PI / 2; // start at top
-  const x = 50 + 42 * Math.cos(angle); // % of container width
-  const y = 50 + 38 * Math.sin(angle); // % of container height
+  const x = 50 + 43 * Math.cos(angle); // % of container width
+  const y = 50 + 40 * Math.sin(angle); // % of container height
   return { left: `${x}%`, top: `${y}%` };
 }
 
@@ -42,7 +42,18 @@ export default function PokerTable({
 
   return (
     <div className="flex flex-col items-center gap-6">
-      <div className="relative aspect-[16/10] w-full max-w-3xl rounded-[50%] border-4 border-[#0B0F10] bg-gradient-to-b from-[#0F4C39] to-[#0B3327] shadow-[inset_0_0_60px_rgba(0,0,0,0.5)]">
+      <div
+        className="relative aspect-[16/9.5] w-full max-w-4xl rounded-[46%] border-[10px] border-[#3a2416] shadow-panel"
+        style={{
+          background:
+            'radial-gradient(120% 100% at 50% 15%, #146348 0%, #0f4c39 45%, #082019 100%)'
+        }}
+      >
+        {/* Rail highlight — a thin inner ring that catches light, the kind
+            of detail that reads as "real table" instead of "green div." */}
+        <div className="pointer-events-none absolute inset-2 rounded-[44%] shadow-felt" />
+        <div className="pointer-events-none absolute inset-2 rounded-[44%] ring-1 ring-gold/10" />
+
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
           <CommunityCards cards={communityCards} potSize={potSize} />
         </div>
@@ -51,11 +62,7 @@ export default function PokerTable({
           const pos = getSeatPosition(index, room.seats.length);
           const isMe = seatMeta?.id === myUserId;
           return (
-            <div
-              key={index}
-              className="absolute -translate-x-1/2 -translate-y-1/2"
-              style={pos}
-            >
+            <div key={index} className="absolute -translate-x-1/2 -translate-y-1/2" style={pos}>
               <PlayerSeat
                 seatPlayer={seatPlayer}
                 seatMeta={seatMeta}
@@ -70,7 +77,7 @@ export default function PokerTable({
       </div>
 
       {actionError && (
-        <p className="rounded border border-[#B23A2E]/40 bg-[#B23A2E]/10 px-3 py-1.5 text-sm text-[#B23A2E]">
+        <p className="animate-fade-up rounded-lg border border-danger/40 bg-danger/10 px-4 py-2 text-sm text-danger">
           {actionError}
         </p>
       )}
