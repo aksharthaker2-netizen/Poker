@@ -8,7 +8,8 @@ const envSchema = z.object({
   DIRECT_URL: z.string().min(1, 'DIRECT_URL is required (Neon direct connection string)'),
   JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
   FRONTEND_URL: z.string().optional(),
-  ML_API_URL: z.string().optional()
+  ML_API_URL: z.string().optional(),
+  REDIS_URL: z.string().optional() // config/redis.js falls back to redis://localhost:6379 if unset
 });
 
 const result = envSchema.safeParse(process.env);

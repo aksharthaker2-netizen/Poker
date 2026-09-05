@@ -44,7 +44,7 @@ module.exports = function registerRoomHandlers(io, socket) {
         requestedSeat
       );
 
-      presenceManager.setInGame(userId, newRoom.id);
+      await presenceManager.setInGame(userId, newRoom.id);
 
       console.log(`[Room] ${username} created room ${newRoom.id}`);
       if (typeof callback === 'function') callback({ success: true, room: updatedRoom });
@@ -55,7 +55,7 @@ module.exports = function registerRoomHandlers(io, socket) {
   });
 
   // 2. JOIN AN EXISTING ROOM
-  socket.on('JOIN_ROOM', (payload, callback) => {
+  socket.on('JOIN_ROOM', async (payload, callback) => {
     try {
       enforceRateLimit(`${userId}:JOIN_ROOM`, 15, 60_000);
       const { roomId, username, requestedSeat } = validateSocketPayload(joinRoomSchema, payload);
@@ -66,7 +66,7 @@ module.exports = function registerRoomHandlers(io, socket) {
         requestedSeat
       );
       socket.join(roomId);
-      presenceManager.setInGame(userId, roomId);
+      await presenceManager.setInGame(userId, roomId);
 
       console.log(`[Room] ${username} joined room ${roomId}`);
       io.to(roomId).emit('ROOM_UPDATED', { room: updatedRoom });
@@ -153,7 +153,7 @@ module.exports = function registerRoomHandlers(io, socket) {
 
       await handlePlayerLeaving(io, roomId, userId, { immediate: true });
       socket.leave(roomId);
-      presenceManager.setOnline(userId);
+      await presenceManager.setOnline(userId);
 
       console.log(`[Room] ${userId} left room ${roomId}`);
       if (typeof callback === 'function') callback({ success: true });

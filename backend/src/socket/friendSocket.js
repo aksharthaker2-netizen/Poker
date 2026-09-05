@@ -32,7 +32,7 @@ module.exports = function registerFriendHandlers(io, socket) {
         throw new Error('You can only invite accepted friends.');
       }
 
-      const targetSocketId = presenceManager.getSocketId(targetUserId);
+      const targetSocketId = await presenceManager.getSocketId(targetUserId);
       if (!targetSocketId) {
         throw new Error('Player is currently offline.');
       }

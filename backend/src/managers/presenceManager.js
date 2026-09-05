@@ -1,72 +1,71 @@
 // src/managers/presenceManager.js
+const { redisClient } = require('../config/redis');
 
+// Safety-net TTL: if a backend process crashes without running its
+// disconnect handler, a stale "online" record would otherwise sit in
+// Redis forever. Refreshed on every write, so any actively-connected
+// user's record never actually expires in practice.
+const PRESENCE_TTL_SECONDS = 24 * 60 * 60;
+
+const userKey = (userId) => `presence:user:${userId}`;
+const socketKey = (socketId) => `presence:socket:${socketId}`;
+
+/**
+ * Redis-backed presence tracking — previously an in-memory Map, which
+ * only worked correctly with exactly one backend process running. Now
+ * that Socket.IO itself is Redis-adapter-backed (see socket/index.js)
+ * and multiple instances can be running, presence needs to be visible
+ * across ALL of them: a friend invite routed by presenceManager.getSocketId
+ * has to find the right socket regardless of which instance that socket
+ * happens to be connected to.
+ *
+ * Every method is now async — see the call sites in socket/index.js,
+ * roomSocket.js, friendSocket.js, and friendController.js, all updated
+ * to await these.
+ */
 class PresenceManager {
-  constructor() {
-    // Maps userId -> { socketId, status, roomId }
-    this.users = new Map();
-    // Maps socketId -> userId (for lightning-fast disconnect handling)
-    this.sockets = new Map();
+  async connectUser(userId, socketId) {
+    const value = JSON.stringify({ socketId, status: 'ONLINE', roomId: null });
+    await redisClient.set(userKey(userId), value, 'EX', PRESENCE_TTL_SECONDS);
+    await redisClient.set(socketKey(socketId), userId, 'EX', PRESENCE_TTL_SECONDS);
   }
 
   /**
-   * Registers a user as ONLINE when they open the app.
+   * @returns {String|null} the userId that just disconnected, or null.
    */
-  connectUser(userId, socketId) {
-    this.users.set(userId, { socketId, status: 'ONLINE', roomId: null });
-    this.sockets.set(socketId, userId);
-  }
-
-  /**
-   * Cleans up memory when a user closes their browser or loses connection.
-   * @returns {String|null} The userId that just disconnected, or null.
-   */
-  disconnectUser(socketId) {
-    const userId = this.sockets.get(socketId);
+  async disconnectUser(socketId) {
+    const userId = await redisClient.get(socketKey(socketId));
     if (userId) {
-      this.users.delete(userId);
-      this.sockets.delete(socketId);
+      await redisClient.del(userKey(userId));
+      await redisClient.del(socketKey(socketId));
     }
     return userId;
   }
 
-  /**
-   * Updates a user's status when they join a table.
-   */
-  setInGame(userId, roomId) {
-    const user = this.users.get(userId);
-    if (user) {
-      user.status = 'IN_GAME';
-      user.roomId = roomId;
-    }
+  async setInGame(userId, roomId) {
+    const user = await this.getUser(userId);
+    if (!user) return;
+    user.status = 'IN_GAME';
+    user.roomId = roomId;
+    await redisClient.set(userKey(userId), JSON.stringify(user), 'EX', PRESENCE_TTL_SECONDS);
   }
 
-  /**
-   * Updates a user's status when they leave a table.
-   */
-  setOnline(userId) {
-    const user = this.users.get(userId);
-    if (user) {
-      user.status = 'ONLINE';
-      user.roomId = null;
-    }
+  async setOnline(userId) {
+    const user = await this.getUser(userId);
+    if (!user) return;
+    user.status = 'ONLINE';
+    user.roomId = null;
+    await redisClient.set(userKey(userId), JSON.stringify(user), 'EX', PRESENCE_TTL_SECONDS);
   }
 
-  /**
-   * Retrieves the current socket connection for a specific user.
-   */
-  getSocketId(userId) {
-    const user = this.users.get(userId);
+  async getSocketId(userId) {
+    const user = await this.getUser(userId);
     return user ? user.socketId : null;
   }
 
-  /**
-   * FIX: safe accessor for a user's full presence record, so callers
-   * (e.g. socket/index.js's disconnect handler) don't need to reach into
-   * `presenceManager.users` directly — that couples them to the internal
-   * Map implementation and makes it easy to accidentally mutate it.
-   */
-  getUser(userId) {
-    return this.users.get(userId) || null;
+  async getUser(userId) {
+    const raw = await redisClient.get(userKey(userId));
+    return raw ? JSON.parse(raw) : null;
   }
 }
 

@@ -99,14 +99,20 @@ async function listFriends(req, res) {
   try {
     const friendships = await friendRepository.listAccepted(req.userId);
 
-    const friends = friendships.map((f) => {
-      const friend = f.requesterId === req.userId ? f.addressee : f.requester;
-      return {
-        friendshipId: f.id,
-        ...friend,
-        online: Boolean(presenceManager.getSocketId(friend.id))
-      };
-    });
+    // getSocketId is now async (Redis-backed presenceManager) — was a
+    // synchronous in-memory Map lookup before, so this needed to move
+    // from a plain .map() to Promise.all(...map(async ...)).
+    const friends = await Promise.all(
+      friendships.map(async (f) => {
+        const friend = f.requesterId === req.userId ? f.addressee : f.requester;
+        const socketId = await presenceManager.getSocketId(friend.id);
+        return {
+          friendshipId: f.id,
+          ...friend,
+          online: Boolean(socketId)
+        };
+      })
+    );
 
     return res.json({ friends });
   } catch (error) {

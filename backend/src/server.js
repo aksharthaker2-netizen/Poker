@@ -10,26 +10,40 @@ const { startLeaderboardJob } = require('./jobs/recalculateLeaderboard');
 const { startPruneDisconnectedSeatsJob } = require('./jobs/pruneDisconnectedSeats');
 const mlService = require('./services/mlService');
 
-const httpServer = http.createServer(app);
+async function start() {
+  const httpServer = http.createServer(app);
 
-const io = initializeSocket(httpServer);
-startCleanupJob();
-startLeaderboardJob();
-startPruneDisconnectedSeatsJob(io); // needs `io` to broadcast ROOM_UPDATED after freeing a seat
+  // Now async — waits for the Redis adapter's pub/sub clients to be
+  // ready before Socket.IO starts accepting connections (see
+  // socket/index.js). Boots the same way whether Redis is configured for
+  // one instance or many; the only thing that changes with more
+  // instances is that broadcasts now actually reach sockets on other
+  // processes instead of silently only reaching the one that emitted them.
+  const io = await initializeSocket(httpServer);
 
-httpServer.listen(env.PORT, async () => {
-  console.log(`[Server] PokerAI backend listening on port ${env.PORT} (${env.NODE_ENV})`);
+  startCleanupJob();
+  startLeaderboardJob();
+  startPruneDisconnectedSeatsJob(io); // needs `io` to broadcast ROOM_UPDATED after freeing a seat
 
-  // Fails loudly at boot rather than silently — every bot would otherwise
-  // just fold for the rest of the session with no obvious explanation.
-  const mlHealthy = await mlService.checkHealth();
-  if (mlHealthy) {
-    console.log(`[Server] ML service reachable at ${process.env.ML_API_URL || 'http://localhost:8000'}`);
-  } else {
-    console.warn(
-      `[Server] ⚠ ML service NOT reachable at ${process.env.ML_API_URL || 'http://localhost:8000'} — bots will fold every hand until it's up.`
-    );
-  }
+  httpServer.listen(env.PORT, async () => {
+    console.log(`[Server] PokerAI backend listening on port ${env.PORT} (${env.NODE_ENV})`);
+
+    // Fails loudly at boot rather than silently — every bot would otherwise
+    // just fold for the rest of the session with no obvious explanation.
+    const mlHealthy = await mlService.checkHealth();
+    if (mlHealthy) {
+      console.log(`[Server] ML service reachable at ${process.env.ML_API_URL || 'http://localhost:8000'}`);
+    } else {
+      console.warn(
+        `[Server] ⚠ ML service NOT reachable at ${process.env.ML_API_URL || 'http://localhost:8000'} — bots will fold every hand until it's up.`
+      );
+    }
+  });
+}
+
+start().catch((error) => {
+  console.error('[Server] Fatal error during startup:', error);
+  process.exit(1);
 });
 
 // Don't let one bad unhandled rejection silently corrupt state — log it
