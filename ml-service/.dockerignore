@@ -1,0 +1,10 @@
+venv
+__pycache__
+*.pyc
+catboost_info
+datasets
+training
+tests
+.env
+.git
+.gitignore

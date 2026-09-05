@@ -1,0 +1,80 @@
+# docker-compose.yml (place at the repo root, poker-ai/)
+#
+# Postgres is intentionally NOT containerized here — Neon is already your
+# managed Postgres, holds your real data, and there's no reason to spin
+# up a redundant local instance alongside it. Only Redis (new, needed for
+# the Socket.IO adapter + presence) and your own three services get
+# containers.
+#
+# Secrets (DATABASE_URL, DIRECT_URL, JWT_SECRET) come from a `.env` file
+# at this same location — docker-compose reads it automatically for the
+# ${VAR} substitutions below. Copy .env.example -> .env and fill it in;
+# never commit the real .env.
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  ml-service:
+    build:
+      context: ./ml-service
+      dockerfile: Dockerfile
+    ports:
+      - '8000:8000'
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - '5000:5000'
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      DATABASE_URL: ${DATABASE_URL}
+      DIRECT_URL: ${DIRECT_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      # Browser-facing origin for CORS — the actual value the frontend
+      # container is reachable at from OUTSIDE Docker.
+      FRONTEND_URL: http://localhost:5173
+      # Container-to-container — Docker's internal DNS resolves service
+      # names, so "ml-service" here refers to the ml-service container
+      # above, not localhost.
+      ML_API_URL: http://ml-service:8000
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+      ml-service:
+        condition: service_started
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Browser-facing URLs again — the browser runs on the HOST
+        # machine, outside the Docker network, so it needs localhost +
+        # the mapped port, never the internal "backend" hostname.
+        VITE_API_URL: http://localhost:5000
+        VITE_SOCKET_URL: http://localhost:5000
+    ports:
+      - '5173:80'
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  redis-data:
