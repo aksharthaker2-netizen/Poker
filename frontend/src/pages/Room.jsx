@@ -1,21 +1,19 @@
-// src/pages/Room.jsx
+// src/pages/Room.jsx — Waiting Room (lobby before a game starts)
 import { useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import WaitingRoom from '../components/room/WaitingRoom';
 import { useRoom } from '../hooks/useRoom';
+import WaitingRoom from '../components/room/WaitingRoom';
 
 export default function Room() {
   const { roomId } = useParams();
   const navigate = useNavigate();
   const userId = localStorage.getItem('userId');
-  const username = localStorage.getItem('username') || '';
 
   const {
     room,
     isHost,
     error,
     closedReason,
-    joinRoom,
     addBot,
     startGame,
     leaveRoom,
@@ -23,29 +21,17 @@ export default function Room() {
     removeBot,
     closeRoom,
     changeSeat,
-    clearRoom
+    clearRoom,
   } = useRoom(userId);
 
-  // If the store doesn't already hold this room (e.g. page refresh, or
-  // arriving via a shared link), rejoin it explicitly.
-  useEffect(() => {
-    if (!room || room.id !== roomId) {
-      joinRoom(roomId, username).catch(() => {
-        /* surfaced via error state below */
-      });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomId]);
-
-  // GAME_STARTED (handled inside useRoom) flips room.status to PLAYING —
-  // move everyone into the actual table view when that happens.
+  // Redirect to game page as soon as the game starts
   useEffect(() => {
     if (room?.status === 'PLAYING') {
-      navigate(`/game/${roomId}`);
+      navigate(`/game/${roomId}`, { replace: true });
     }
   }, [room?.status, roomId, navigate]);
 
-  // Host closed the room, or I got kicked — either way, get out.
+  // Redirect home if the room was closed or we got kicked
   useEffect(() => {
     if (closedReason) {
       clearRoom();
@@ -53,55 +39,59 @@ export default function Room() {
     }
   }, [closedReason, clearRoom, navigate]);
 
-  if (!userId) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-[#0B0F10] text-[#8B9A94]">
-        You need to be logged in to play.
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[#0B0F10] text-[#EDEAE3]">
-        <p className="text-[#B23A2E]">{error}</p>
-        <button
-          onClick={() => navigate('/')}
-          className="rounded border border-[#22302B] px-4 py-2 text-sm hover:border-[#D4AF37]"
-        >
-          Back to lobby
-        </button>
-      </div>
-    );
-  }
-
+  /* ── Loading state ───────────────────────────────────────── */
   if (!room) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#0B0F10] text-[#8B9A94]">
-        Joining room…
+      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4">
+        {/* Chip spinner */}
+        <div
+          className="flex h-16 w-16 animate-spin items-center justify-center rounded-full text-3xl"
+          style={{ border: '3px solid rgba(212,175,55,0.15)', borderTopColor: '#D4AF37' }}
+        >
+        </div>
+        <p className="text-sm text-text-muted">Loading room…</p>
       </div>
     );
   }
 
+  const seatedCount = room.seats.filter(Boolean).length;
+
   return (
-    <div className="min-h-screen bg-[#0B0F10] px-4 py-16">
+    <div className="page-enter mx-auto max-w-xl">
+      {/* ── Page header ──────────────────────────────────────── */}
+      <div className="mb-6 flex flex-col items-center gap-2 text-center">
+        <div className="flex items-center gap-2">
+          <span className="text-2xl">🃏</span>
+          <h1 className="font-display text-2xl font-semibold text-text">Waiting Room</h1>
+        </div>
+        <p className="text-sm text-text-muted">
+          {seatedCount} of {room.seats.length} seats filled
+          {isHost ? ' — you are the host' : ''}
+        </p>
+      </div>
+
+      {/* ── Error banner ─────────────────────────────────────── */}
+      {error && (
+        <div
+          className="mb-5 flex items-center gap-2 rounded-xl px-4 py-3 text-sm animate-slide-down"
+          style={{ background: 'rgba(178,58,46,0.1)', border: '1px solid rgba(178,58,46,0.3)', color: '#C0453A' }}
+        >
+          <span>⚠</span> {error}
+        </div>
+      )}
+
+      {/* ── WaitingRoom component (seats, bots, invite) ──────── */}
       <WaitingRoom
         room={room}
         isHost={isHost}
         myUserId={userId}
-        onAddBot={(botRating) => addBot(roomId, null, botRating)}
+        onAddBot={(requestedSeat, botRating) => addBot(roomId, requestedSeat, botRating)}
         onStartGame={() => startGame(roomId)}
-        onLeaveRoom={async () => {
-          await leaveRoom(roomId);
-          navigate('/');
-        }}
+        onLeaveRoom={() => leaveRoom(roomId).then(() => navigate('/'))}
         onKickPlayer={(targetUserId) => kickPlayer(roomId, targetUserId)}
         onRemoveBot={(botId) => removeBot(roomId, botId)}
-        onCloseRoom={async () => {
-          await closeRoom(roomId);
-          navigate('/');
-        }}
-        onChangeSeat={(seatIndex) => changeSeat(roomId, seatIndex)}
+        onCloseRoom={() => closeRoom(roomId).then(() => navigate('/'))}
+        onChangeSeat={(seat) => changeSeat(roomId, seat)}
       />
     </div>
   );

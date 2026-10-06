@@ -38,6 +38,14 @@ class TurnManager {
 
     this.currentPlayerIndex = firstActorIndex;
 
+    // Persisted so buildPublicPayload (gameFlowManager.js) can read
+    // "who's the dealer / small blind / big blind right now" at ANY
+    // point during the hand — not just in this method's return value —
+    // for the frontend's dealer-button display. Previously these were
+    // only local variables, discarded the moment setupNewHand() returned.
+    this.smallBlindIndex = smallBlindIndex;
+    this.bigBlindIndex = bigBlindIndex;
+
     return {
       dealerId: this.players[this.dealerIndex],
       smallBlindId: this.players[smallBlindIndex],

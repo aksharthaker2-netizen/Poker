@@ -10,13 +10,24 @@ const app = express();
 
 app.use(
   cors({
-    // FIX: `origin: '*'` combined with `credentials: true` is actually
-    // rejected outright by browsers (the CORS spec disallows a wildcard
-    // origin alongside credentialed requests) — this was silently broken
-    // whenever FRONTEND_URL wasn't set. We also don't use cookies at all
-    // (Bearer tokens only, read from the Authorization header), so
-    // `credentials: true` shouldn't be here regardless.
-    origin: env.FRONTEND_URL || '*' // set FRONTEND_URL explicitly in production
+    origin: (origin, callback) => {
+      // Allow requests with no origin (curl, Postman, server-to-server)
+      if (!origin) return callback(null, true);
+      // In development: allow any localhost/127.0.0.1 port so Vite can
+      // start on 5173, 5174, etc. without CORS errors.
+      if (env.NODE_ENV !== 'production') {
+        if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+          return callback(null, true);
+        }
+      }
+      // Production: only the explicit FRONTEND_URL is allowed
+      if (origin === env.FRONTEND_URL) return callback(null, true);
+      callback(new Error(`CORS: origin ${origin} not allowed`));
+    },
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    exposedHeaders: ['Authorization'],
+    credentials: true,
   })
 );
 app.use(express.json());

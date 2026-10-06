@@ -46,36 +46,36 @@ export default function InviteFriendPanel({ roomId }) {
   const onlineFriends = friends.filter((f) => f.online);
 
   return (
-    <div className="rounded-lg border border-[#22302B] bg-[#0F1513] p-4">
+    <div className="rounded-xl border border-border bg-panel p-4 shadow-card">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="text-sm font-medium text-[#D4AF37] transition hover:brightness-110"
+        className="text-sm font-medium text-gold transition hover:brightness-110"
       >
         {open ? 'Hide' : 'Invite a friend'} {open ? '▲' : '▼'}
       </button>
 
       {open && (
         <div className="mt-3 flex flex-col gap-2">
-          {error && <p className="text-xs text-[#B23A2E]">{error}</p>}
+          {error && <p className="text-xs text-danger">{error}</p>}
 
           {friends.length === 0 && !error && (
-            <p className="text-xs text-[#5A6B64]">No friends yet — add some from the Friends page.</p>
+            <p className="text-xs text-faint">No friends yet — add some from the Friends page.</p>
           )}
 
           {friends.length > 0 && onlineFriends.length === 0 && (
-            <p className="text-xs text-[#5A6B64]">None of your friends are online right now.</p>
+            <p className="text-xs text-faint">None of your friends are online right now.</p>
           )}
 
           {onlineFriends.map((friend) => (
             <div key={friend.id} className="flex items-center justify-between text-sm">
               <span className="flex items-center gap-2">
-                <span className="h-2 w-2 rounded-full bg-[#4CAF50]" />
+                <span className="h-2 w-2 rounded-full bg-success" />
                 {friend.username}
               </span>
               <button
                 onClick={() => handleInvite(friend)}
                 disabled={invitingId === friend.id || sentTo.has(friend.id)}
-                className="rounded border border-[#D4AF37] px-3 py-1 text-xs text-[#D4AF37] transition hover:bg-[#D4AF37] hover:text-[#0B0F10] disabled:opacity-50"
+                className="rounded-md border border-gold px-3 py-1 text-xs text-gold transition hover:bg-gold hover:text-ink disabled:opacity-50"
               >
                 {sentTo.has(friend.id) ? 'Invited' : invitingId === friend.id ? '…' : 'Invite'}
               </button>

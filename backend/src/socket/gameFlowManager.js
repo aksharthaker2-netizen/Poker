@@ -44,6 +44,14 @@ function buildPublicPayload(room, actionResult) {
     highestBet,
     communityCards: game.communityCards,
     players: game.players, // chips/status only — no hole cards live here
+    // Read live from turnManager rather than only including these in the
+    // one-off GAME_STARTED emit — turnManager.dealerIndex/smallBlindIndex/
+    // bigBlindIndex don't change mid-hand, so this is always accurate on
+    // EVERY broadcast, including the auto-started hands 2+ that never
+    // got their own GAME_STARTED event (see gameFlowManager.scheduleNextHand).
+    dealerId: game.turnManager.players[game.turnManager.dealerIndex] ?? null,
+    smallBlindId: game.turnManager.players[game.turnManager.smallBlindIndex] ?? null,
+    bigBlindId: game.turnManager.players[game.turnManager.bigBlindIndex] ?? null,
     actionInfo: null
   };
 

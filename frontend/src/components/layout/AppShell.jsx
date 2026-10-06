@@ -1,109 +1,94 @@
 // src/components/layout/AppShell.jsx
-import { NavLink, useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import { authApi, clearSession } from '../../services/api';
 import { disconnectSocket } from '../../services/socket';
-
-const NAV_LINKS = [
-  { to: '/', label: 'Play', end: true },
-  { to: '/friends', label: 'Friends' },
-  { to: '/leaderboard', label: 'Leaderboard' },
-  { to: '/achievements', label: 'Achievements' },
-  { to: '/games', label: 'History' },
-  { to: '/rooms', label: 'Rooms' }
-];
+import Sidebar from './Sidebar';
+import MobileNav from './MobileNav';
+import Topbar from './Topbar';
 
 /**
- * Persistent chrome for every authenticated page EXCEPT Game.jsx (the
- * poker table) — the table view stays full-bleed/immersive on purpose,
- * with just its own minimal Leave-table button, rather than competing
- * with a nav bar while cards are on the felt.
+ * Persistent chrome for every authenticated page EXCEPT Game.jsx.
+ *
+ * Desktop: collapsible left sidebar (240px expanded / 64px collapsed) + main content
+ * Mobile:  full-width content + bottom tab bar (sidebar hidden)
+ *
+ * The poker table (Game.jsx) stays full-bleed/immersive — it bypasses AppShell entirely
+ * and uses its own .game-layout grid.
  */
 export default function AppShell({ children }) {
   const navigate = useNavigate();
-  const username = localStorage.getItem('username') || '';
+  const [collapsed, setCollapsed] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const handleLogout = async () => {
-    try {
-      await authApi.logout();
-    } catch {
-      // best-effort — proceed with local logout regardless
-    }
+    try { await authApi.logout(); } catch { /* best-effort */ }
     disconnectSocket();
     clearSession();
     navigate('/login');
   };
 
+  const sidebarW = collapsed ? 64 : 240;
+
   return (
-    <div className="min-h-screen bg-ink text-text">
-      <header className="sticky top-0 z-40 border-b border-border/80 bg-ink/85 backdrop-blur-md">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">
-          <button
-            onClick={() => navigate('/')}
-            className="flex items-center gap-2 font-display text-lg font-semibold tracking-tight text-text transition hover:text-gold"
-          >
-            <span className="text-gold">♠</span> PokerAI
-          </button>
+    <div className="flex min-h-screen" style={{ background: '#0B0F10', color: '#EDEAE3' }}>
+      {/* ── Desktop Sidebar ──────────────────────────────────────── */}
+      <div className="hidden md:block">
+        <Sidebar
+          collapsed={collapsed}
+          onToggle={() => setCollapsed((v) => !v)}
+        />
+      </div>
 
-          <nav className="hidden items-center gap-1 md:flex">
-            {NAV_LINKS.map((link) => (
-              <NavLink
-                key={link.to}
-                to={link.to}
-                end={link.end}
-                className={({ isActive }) =>
-                  `rounded-md px-3 py-1.5 text-sm font-medium transition ${
-                    isActive
-                      ? 'bg-gold/10 text-gold'
-                      : 'text-text-muted hover:bg-panel2 hover:text-text'
-                  }`
-                }
-              >
-                {link.label}
-              </NavLink>
-            ))}
-          </nav>
-
-          <div className="flex items-center gap-2">
-            <NavLink
-              to="/profile"
-              className={({ isActive }) =>
-                `hidden rounded-md px-3 py-1.5 text-sm font-medium transition sm:block ${
-                  isActive ? 'bg-gold/10 text-gold' : 'text-text-muted hover:bg-panel2 hover:text-text'
-                }`
-              }
+      {/* ── Mobile Sidebar Drawer (overlay) ──────────────────────── */}
+      <AnimatePresence>
+        {mobileMenuOpen && (
+          <>
+            <motion.div
+              key="backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setMobileMenuOpen(false)}
+              className="fixed inset-0 z-40 md:hidden"
+              style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }}
+            />
+            <motion.div
+              key="drawer"
+              initial={{ x: -240 }}
+              animate={{ x: 0 }}
+              exit={{ x: -240 }}
+              transition={{ type: 'spring', stiffness: 380, damping: 38 }}
+              className="fixed left-0 top-0 z-50 h-full md:hidden"
             >
-              {username || 'Profile'}
-            </NavLink>
-            <button
-              onClick={handleLogout}
-              className="rounded-md border border-border px-3 py-1.5 text-sm text-text-muted transition hover:border-danger hover:text-danger"
-            >
-              Log out
-            </button>
-          </div>
-        </div>
+              <Sidebar collapsed={false} onToggle={() => setMobileMenuOpen(false)} />
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
-        {/* Mobile nav row — the six links wrap under the header bar on
-            narrow screens instead of squeezing into the top row. */}
-        <nav className="flex gap-1 overflow-x-auto border-t border-border/60 px-4 py-2 md:hidden">
-          {NAV_LINKS.map((link) => (
-            <NavLink
-              key={link.to}
-              to={link.to}
-              end={link.end}
-              className={({ isActive }) =>
-                `shrink-0 rounded-md px-3 py-1.5 text-xs font-medium transition ${
-                  isActive ? 'bg-gold/10 text-gold' : 'text-text-muted hover:bg-panel2 hover:text-text'
-                }`
-              }
-            >
-              {link.label}
-            </NavLink>
-          ))}
-        </nav>
-      </header>
+      {/* ── Main content area ─────────────────────────────────────── */}
+      <motion.div
+        animate={{ marginLeft: typeof window !== 'undefined' && window.innerWidth >= 768 ? sidebarW : 0 }}
+        transition={{ type: 'spring', stiffness: 380, damping: 38 }}
+        className="flex min-h-screen flex-1 flex-col"
+        style={{ minWidth: 0 }}
+      >
+        {/* Topbar */}
+        <Topbar
+          onMobileMenuToggle={() => setMobileMenuOpen((v) => !v)}
+          mobileMenuOpen={mobileMenuOpen}
+        />
 
-      <main className="mx-auto max-w-6xl px-4 py-8">{children}</main>
+        {/* Page content */}
+        <main className="flex-1 px-4 py-6 pb-24 md:px-6 md:pb-8 mx-auto w-full" style={{ maxWidth: 1200 }}>
+          {children}
+        </main>
+      </motion.div>
+
+      {/* ── Mobile bottom nav ─────────────────────────────────────── */}
+      <MobileNav />
     </div>
   );
 }
